@@ -1,0 +1,4807 @@
+===== FILE: App.jsx =====
+// src/App.jsx
+// Main MVP App with Hero page, transition, and visualizer with mode switching
+
+import React, { useState, useEffect, useRef } from 'react';
+import { Play, Pause, SkipForward, SkipBack, Upload, X, ChevronDown, ChevronUp } from 'lucide-react';
+import Hero from './components/Hero';
+import AudioVisualizer from './visualizers/AudioVisualizer';
+import './visualizercss.css';
+
+const App = () => {
+  const [showVisualizer, setShowVisualizer] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [volume, setVolume] = useState(0.7);
+  const [currentTrack, setCurrentTrack] = useState(null);
+  const [playlist, setPlaylist] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [visualizerMode, setVisualizerMode] = useState('ball'); // 'ball' or 'canvas'
+
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const sourceRef = useRef(null);
+  const audioRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (audioContextRef.current) audioContextRef.current.close();
+    };
+  }, []);
+
+  useEffect(() => {
+    const updateTime = () => {
+      if (audioRef.current) {
+        setCurrentTime(audioRef.current.currentTime);
+        setDuration(audioRef.current.duration || 0);
+      }
+    };
+    const interval = setInterval(updateTime, 100);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleLaunch = () => {
+    setIsTransitioning(true);
+    setTimeout(() => {
+      setShowVisualizer(true);
+      setIsTransitioning(false);
+    }, 1000);
+  };
+
+  const initAudio = () => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      analyserRef.current = audioContextRef.current.createAnalyser();
+      analyserRef.current.fftSize = 4096;
+      analyserRef.current.smoothingTimeConstant = 0.7;
+    }
+  };
+
+  const handleFileUpload = (e) => {
+    const files = Array.from(e.target.files);
+    const audioFiles = files.filter(file => file.type.startsWith('audio/'));
+
+    const newTracks = audioFiles.map(file => ({
+      name: file.name.replace(/\.[^/.]+$/, ''),
+      url: URL.createObjectURL(file),
+      file: file
+    }));
+
+    setPlaylist(prev => [...prev, ...newTracks]);
+
+    if (newTracks.length > 0 && !currentTrack) {
+      setCurrentTrack(newTracks[0]);
+      setCurrentIndex(playlist.length);
+    }
+  };
+
+  const playTrack = async (track, index) => {
+    initAudio();
+
+    if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+      try {
+        await audioContextRef.current.resume();
+      } catch (err) {
+        console.error('Failed to resume AudioContext:', err);
+      }
+    }
+
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = '';
+      if (sourceRef.current) {
+        try {
+          sourceRef.current.disconnect();
+        } catch (e) {}
+      }
+    }
+
+    audioRef.current = new Audio(track.url);
+    audioRef.current.volume = volume;
+
+    try {
+      if (sourceRef.current) {
+        sourceRef.current.disconnect();
+      }
+
+      sourceRef.current = audioContextRef.current.createMediaElementSource(audioRef.current);
+      sourceRef.current.connect(analyserRef.current);
+      analyserRef.current.connect(audioContextRef.current.destination);
+    } catch (err) {
+      console.error('Failed to connect audio source:', err);
+    }
+
+    audioRef.current.onended = () => {
+      skipToNext();
+    };
+
+    audioRef.current.onloadedmetadata = () => {
+      setDuration(audioRef.current.duration);
+    };
+
+    try {
+      await audioRef.current.play();
+      setIsPlaying(true);
+      setCurrentTrack(track);
+      setCurrentIndex(index);
+    } catch (err) {
+      console.error('Playback failed:', err);
+      setIsPlaying(false);
+    }
+  };
+
+  const togglePlay = async () => {
+    if (!currentTrack && playlist.length > 0) {
+      playTrack(playlist[0], 0);
+      return;
+    }
+
+    if (!currentTrack) {
+      fileInputRef.current?.click();
+      return;
+    }
+
+    if (isPlaying) {
+      audioRef.current?.pause();
+      setIsPlaying(false);
+    } else {
+      if (audioContextRef.current?.state === 'suspended') {
+        try {
+          await audioContextRef.current.resume();
+        } catch (err) {
+          console.error('Failed to resume AudioContext:', err);
+        }
+      }
+
+      try {
+        await audioRef.current?.play();
+        setIsPlaying(true);
+      } catch (err) {
+        console.error('Playback failed:', err);
+        setIsPlaying(false);
+      }
+    }
+  };
+
+  const skipToNext = () => {
+    if (playlist.length === 0) return;
+
+    const nextIndex = (currentIndex + 1) % playlist.length;
+
+    if (currentIndex === playlist.length - 1) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      setIsPlaying(false);
+      setCurrentIndex(0);
+      setCurrentTrack(playlist[0]);
+      return;
+    }
+
+    playTrack(playlist[nextIndex], nextIndex);
+  };
+
+  const skipToPrevious = () => {
+    if (playlist.length === 0) return;
+
+    if (audioRef.current && audioRef.current.currentTime > 3) {
+      audioRef.current.currentTime = 0;
+      return;
+    }
+
+    const prevIndex = currentIndex === 0 ? playlist.length - 1 : currentIndex - 1;
+    playTrack(playlist[prevIndex], prevIndex);
+  };
+
+  const handleVolumeChange = (e) => {
+    const newVolume = parseFloat(e.target.value);
+    setVolume(newVolume);
+    if (audioRef.current) {
+      audioRef.current.volume = newVolume;
+    }
+  };
+
+  const handleSeek = (e) => {
+    const newTime = parseFloat(e.target.value);
+    if (audioRef.current && !isNaN(audioRef.current.duration)) {
+      audioRef.current.currentTime = newTime;
+      setCurrentTime(newTime);
+    }
+  };
+
+  const formatTime = (seconds) => {
+    if (isNaN(seconds)) return '0:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const removeTrack = (index) => {
+    const newPlaylist = playlist.filter((_, i) => i !== index);
+    setPlaylist(newPlaylist);
+
+    if (index === currentIndex) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      setIsPlaying(false);
+      setCurrentTrack(null);
+    } else if (index < currentIndex) {
+      setCurrentIndex(currentIndex - 1);
+    }
+  };
+
+  if (!showVisualizer) {
+    return <Hero onLaunch={handleLaunch} isTransitioning={isTransitioning} />;
+  }
+
+  return (
+    <div className="app-container">
+      <AudioVisualizer
+        analyser={analyserRef.current}
+        isPlaying={isPlaying}
+        mode={visualizerMode}
+      />
+
+      <div className={`floating-controls ${!controlsVisible ? 'hidden' : ''}`}>
+        <button
+          className="toggle-controls"
+          onClick={() => setControlsVisible(!controlsVisible)}
+        >
+          {controlsVisible ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+        </button>
+
+        <div className="controls-content">
+          {/* Mode Toggle */}
+          <div className="mode-toggle">
+            <button
+              className={`mode-btn ${visualizerMode === 'ball' ? 'active' : ''}`}
+              onClick={() => setVisualizerMode('ball')}
+              title="Ball Mode"
+            >
+              Ball
+            </button>
+            <button
+              className={`mode-btn ${visualizerMode === 'canvas' ? 'active' : ''}`}
+              onClick={() => setVisualizerMode('canvas')}
+              title="Canvas Mode"
+            >
+              Canvas
+            </button>
+          </div>
+
+          {currentTrack && (
+            <div className="track-info-minimal">
+              <p className="track-name-minimal">{currentTrack.name}</p>
+              <div className="time-display">
+                <span>{formatTime(currentTime)}</span>
+                <span>{formatTime(duration)}</span>
+              </div>
+            </div>
+          )}
+
+          {currentTrack && (
+            <div className="timeline-container">
+              <input
+                type="range"
+                min="0"
+                max={duration || 0}
+                step="0.1"
+                value={currentTime}
+                onChange={handleSeek}
+                className="timeline-slider"
+              />
+            </div>
+          )}
+
+          <div className="mini-controls">
+            <button
+              onClick={skipToPrevious}
+              className="mini-btn"
+              title="Previous"
+              disabled={playlist.length === 0}
+            >
+              <SkipBack size={14} />
+            </button>
+
+            <button
+              onClick={togglePlay}
+              className="mini-btn primary"
+              title={isPlaying ? 'Pause' : 'Play'}
+            >
+              {isPlaying ? <Pause size={16} /> : <Play size={16} />}
+            </button>
+
+            <button
+              onClick={skipToNext}
+              className="mini-btn"
+              title="Next"
+              disabled={playlist.length === 0}
+            >
+              <SkipForward size={14} />
+            </button>
+
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="mini-btn"
+              title="Add"
+            >
+              <Upload size={14} />
+            </button>
+
+            <div className="mini-volume">
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                value={volume}
+                onChange={handleVolumeChange}
+                className="mini-slider"
+              />
+            </div>
+          </div>
+
+          {playlist.length > 0 && (
+            <div className="mini-playlist">
+              {playlist.map((track, index) => (
+                <div
+                  key={index}
+                  className={`mini-playlist-item ${index === currentIndex ? 'active' : ''}`}
+                  onClick={() => playTrack(track, index)}
+                >
+                  <span className="mini-track-name">{track.name}</span>
+                  <button
+                    className="mini-remove"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeTrack(index);
+                    }}
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {playlist.length === 0 && (
+            <div className="mini-empty">
+              <p onClick={() => fileInputRef.current?.click()}>Add music</p>
+            </div>
+          )}
+        </div>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="audio/*"
+          multiple
+          onChange={handleFileUpload}
+          style={{ display: 'none' }}
+        />
+      </div>
+
+      {/* Integration Coming Soon Banner */}
+      {!isPlaying && (
+        <div className="integration-banner">
+          <p>Spotify + Apple Music integration coming soon</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default App;
+
+
+
+
+
+
+
+
+
+===== FILE: AudioVisualizerBall.jsx =====
+// ball visual improved idle animation
+
+import React, { useEffect, useRef } from 'react';
+import { generateUniquePalette, hslToString, bassToDeepColor, trebleToLightColor, getColorFromPalette, toLuminous, toRadiantGlow, interpolatePalettes } from '../utils/colorUtils';
+import { initNoise, fractalNoise2D } from '../utils/noise';
+
+const AudioVisualizerBall = ({ analyser, isPlaying }) => {
+  const canvasRef = useRef(null);
+  const animationRef = useRef(null);
+
+  const musicAnalysisRef = useRef({
+    pitch: { current: 0, prev: 0, change: 0, velocity: 0 },
+    rhythm: { beat: false, tempo: 120, consistency: 0.5, syncopation: 0 },
+    harmony: { complexity: 0, richness: 0, consonance: 0.5 },
+    melody: { direction: 0, contour: [], smoothness: 0.5 },
+    dynamics: { current: 0, range: 0, peak: 0, rms: 0 },
+    timbre: { brightness: 0.5, roughness: 0, warmth: 0.5 },
+    texture: { density: 0, layering: 0, clarity: 0.5 },
+    form: { section: 0, transition: false, energy: 0 }
+  });
+
+  const colorStateRef = useRef({
+    currentPalette: null,
+    nextPalette: null,
+    transitionProgress: 1,
+    initialized: false,
+    lastChangeTime: 0
+  });
+
+  const energyBallRef = useRef({
+    x: 0,
+    y: 0,
+    baseRadius: 150,
+    maxRadius: 0,
+    radius: 150,
+    points: [],
+    velocities: [],
+    energy: 0,
+    pulsePhase: 0,
+    shapeMode: 0,
+    targetShapeMode: 0,
+    shapeMorphProgress: 0,
+    shapeTransitionSpeed: 0.02,
+    organicFactor: 0.5,
+    sentientBoundary: 0.6
+  });
+
+  const timeRef = useRef(0);
+  const idleTimeRef = useRef(0);
+  const beatHistoryRef = useRef([]);
+  const shapeTransitionTimerRef = useRef(0);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const resizeCanvas = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      energyBallRef.current.x = canvas.width / 2;
+      energyBallRef.current.y = canvas.height / 2;
+
+      const minDimension = Math.min(canvas.width, canvas.height);
+      energyBallRef.current.maxRadius = Math.min(minDimension * 0.35, 400);
+      energyBallRef.current.baseRadius = energyBallRef.current.maxRadius * 0.7;
+
+      initializeEnergyBall();
+    };
+
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    return () => {
+      window.removeEventListener('resize', resizeCanvas);
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, []);
+
+  const initializeEnergyBall = () => {
+    initNoise(Date.now() + Math.random() * 10000);
+    const ball = energyBallRef.current;
+    const numPoints = 144;
+
+    ball.points = [];
+    ball.velocities = [];
+
+    for (let i = 0; i < numPoints; i++) {
+      const angle = (i / numPoints) * Math.PI * 2;
+      ball.points.push({
+        angle: angle,
+        radius: ball.baseRadius,
+        targetRadius: ball.baseRadius,
+        noiseOffset: Math.random() * 1000,
+        shapeInfluence: Math.random(),
+        localEnergy: 0
+      });
+      ball.velocities.push({ radial: 0, angular: 0 });
+    }
+  };
+
+  const getShapeRadius = (angle, shapeMode, baseRadius, point, t) => {
+    switch(shapeMode) {
+      case 0:
+        return baseRadius * (1 + Math.sin(t * 2) * 0.05);
+      case 1:
+        return baseRadius * (1 + 0.35 * Math.sin(angle * 2 + t * 0.5));
+      case 2:
+        const starPoints = 5;
+        const starAngle = (angle * starPoints) % (Math.PI * 2);
+        return baseRadius * (1 + 0.45 * Math.abs(Math.cos(starAngle * 2.5 + t * 0.3)));
+      case 3:
+        return baseRadius * (1 + 0.4 * Math.sin(angle * 3 + point.shapeInfluence * Math.PI + t * 0.4));
+      case 4:
+        const petals = 6;
+        return baseRadius * (1 + 0.5 * Math.abs(Math.sin(angle * petals + t * 0.6)));
+      case 5:
+        const hexAngle = Math.floor(angle / (Math.PI / 3)) * (Math.PI / 3);
+        return baseRadius * (1 + 0.3 * Math.cos((angle - hexAngle) * 6 + t * 0.3));
+      case 6:
+        return baseRadius * (1 + 0.4 * Math.sin(angle * 4 + t * 2));
+      case 7:
+        return baseRadius * (1 + 0.35 * Math.sin(angle * 2 - t + point.shapeInfluence * Math.PI));
+      default:
+        return baseRadius;
+    }
+  };
+
+  const analyzeMusic = (dataArray, bufferLength) => {
+    const analysis = musicAnalysisRef.current;
+
+    const bassRange = Math.floor(bufferLength * 0.08);
+    const lowMidRange = Math.floor(bufferLength * 0.25);
+    const midRange = Math.floor(bufferLength * 0.5);
+    const highMidRange = Math.floor(bufferLength * 0.7);
+
+    const bass = dataArray.slice(0, bassRange).reduce((a, b) => a + b, 0) / bassRange;
+    const mid = dataArray.slice(lowMidRange, midRange).reduce((a, b) => a + b, 0) / (midRange - lowMidRange);
+    const high = dataArray.slice(highMidRange).reduce((a, b) => a + b, 0) / (bufferLength - highMidRange);
+    const avg = dataArray.reduce((a, b) => a + b, 0) / bufferLength;
+
+    let weightedSum = 0, totalWeight = 0;
+    dataArray.forEach((value, index) => {
+      weightedSum += value * index;
+      totalWeight += value;
+    });
+    analysis.pitch.prev = analysis.pitch.current;
+    analysis.pitch.current = totalWeight > 0 ? (weightedSum / totalWeight) / bufferLength : 0.5;
+    analysis.pitch.change = analysis.pitch.current - analysis.pitch.prev;
+    analysis.pitch.velocity = Math.abs(analysis.pitch.change);
+
+    const activeFreqs = dataArray.filter(v => v > 15).length;
+    analysis.harmony.richness = activeFreqs / bufferLength;
+
+    const bins = 8, binSize = Math.floor(bufferLength / bins);
+    const binEnergies = [];
+    for (let i = 0; i < bins; i++) {
+      const start = i * binSize;
+      const end = start + binSize;
+      binEnergies.push(dataArray.slice(start, end).reduce((a, b) => a + b, 0) / binSize);
+    }
+    const avgBinEnergy = binEnergies.reduce((a, b) => a + b) / bins;
+    const binVariance = binEnergies.reduce((acc, val) => acc + Math.abs(val - avgBinEnergy), 0) / bins;
+    analysis.harmony.complexity = Math.min(1, binVariance / 100);
+
+    analysis.dynamics.current = avg / 255;
+    analysis.timbre.brightness = analysis.pitch.current;
+
+    return {
+      bassIntensity: bass / 255,
+      midIntensity: mid / 255,
+      highIntensity: high / 255,
+      energy: avg / 255
+    };
+  };
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const bufferLength = analyser ? analyser.frequencyBinCount : 1024;
+    const dataArray = new Uint8Array(bufferLength);
+    let prevBass = 0;
+
+    const animate = () => {
+      animationRef.current = requestAnimationFrame(animate);
+
+      const isIdle = !analyser || !isPlaying;
+
+      if (!isIdle && analyser) {
+        analyser.getByteFrequencyData(dataArray);
+        idleTimeRef.current = 0;
+      } else {
+        idleTimeRef.current += 0.016;
+        for (let i = 0; i < dataArray.length; i++) {
+          dataArray[i] = 0;
+        }
+      }
+
+      timeRef.current += 0.016;
+      shapeTransitionTimerRef.current += 0.016;
+
+      const analysis = musicAnalysisRef.current;
+      const colorState = colorStateRef.current;
+      const ball = energyBallRef.current;
+
+      const audioData = isIdle ? {
+        bassIntensity: 0,
+        midIntensity: 0,
+        highIntensity: 0,
+        energy: 0
+      } : analyzeMusic(dataArray, bufferLength);
+
+      // Initialize palette
+      if (!colorState.initialized) {
+        try {
+          colorState.currentPalette = generateUniquePalette({
+            bassAvg: 0.3,
+            midAvg: 0.3,
+            highAvg: 0.3,
+            spectralCentroid: 0.5,
+            harmonicRichness: 0.3
+          });
+          colorState.transitionProgress = 1;
+          colorState.lastChangeTime = timeRef.current;
+          colorState.initialized = true;
+        } catch (err) {
+          colorState.currentPalette = {
+            colors: [{ h: 200, s: 70, l: 60 }],
+            baseHue: 200,
+            type: 'fallback'
+          };
+          colorState.initialized = true;
+        }
+      }
+
+      // Palette transitions
+      const timeSinceLastChange = timeRef.current - colorState.lastChangeTime;
+      const shouldChangePalette = isIdle
+        ? timeSinceLastChange > 20 + Math.random() * 10
+        : (timeSinceLastChange > 10 + Math.random() * 5 || (analysis.harmony.complexity > 0.75 && timeSinceLastChange > 5));
+
+      if (shouldChangePalette && colorState.transitionProgress >= 1) {
+        try {
+          colorState.nextPalette = generateUniquePalette({
+            bassAvg: isIdle ? 0.3 : audioData.bassIntensity,
+            midAvg: isIdle ? 0.3 : audioData.midIntensity,
+            highAvg: isIdle ? 0.3 : audioData.highIntensity,
+            spectralCentroid: analysis.pitch.current,
+            harmonicRichness: analysis.harmony.richness
+          });
+          colorState.transitionProgress = 0;
+          colorState.lastChangeTime = timeRef.current;
+        } catch (err) {
+          console.error('Palette generation error:', err);
+        }
+      }
+
+      if (colorState.transitionProgress < 1 && colorState.nextPalette) {
+        colorState.transitionProgress += isIdle ? 0.002 : 0.005;
+        if (colorState.transitionProgress >= 1) {
+          colorState.currentPalette = colorState.nextPalette;
+          colorState.nextPalette = null;
+        }
+      }
+
+      const activePalette = colorState.transitionProgress < 1 && colorState.nextPalette
+        ? interpolatePalettes(colorState.currentPalette, colorState.nextPalette, colorState.transitionProgress)
+        : colorState.currentPalette;
+
+      // Shape transitions
+      if (!isIdle) {
+        const shouldTransition = (
+          shapeTransitionTimerRef.current > 4 + Math.random() * 2 ||
+          analysis.harmony.complexity > 0.7 ||
+          audioData.energy > 0.8
+        );
+
+        if (shouldTransition && ball.shapeMorphProgress >= 1) {
+          const numShapes = 8;
+          let newShape;
+
+          if (audioData.bassIntensity > 0.7) {
+            newShape = Math.random() < 0.5 ? 0 : 3;
+          } else if (analysis.harmony.complexity > 0.6) {
+            newShape = Math.floor(Math.random() * 3) + 4;
+          } else if (audioData.highIntensity > 0.6) {
+            newShape = Math.random() < 0.5 ? 2 : 6;
+          } else {
+            newShape = Math.floor(Math.random() * numShapes);
+          }
+
+          if (newShape !== ball.targetShapeMode) {
+            ball.targetShapeMode = newShape;
+            ball.shapeMorphProgress = 0;
+            shapeTransitionTimerRef.current = 0;
+          }
+        }
+
+        if (ball.shapeMode !== ball.targetShapeMode) {
+          const morphSpeed = 0.008 + audioData.energy * 0.015 + analysis.harmony.complexity * 0.01;
+          ball.shapeMorphProgress += morphSpeed;
+
+          if (ball.shapeMorphProgress >= 1) {
+            ball.shapeMode = ball.targetShapeMode;
+            ball.shapeMorphProgress = 1;
+          }
+        }
+      } else {
+        ball.shapeMode = 0;
+        ball.targetShapeMode = 0;
+        ball.shapeMorphProgress = 1;
+      }
+
+      ball.energy = Math.max(0, ball.energy - 0.015);
+
+      // Size dynamics
+      if (isIdle) {
+        const breathe = Math.sin(idleTimeRef.current * 0.8) * 0.03;
+        ball.radius = ball.baseRadius * (1 + breathe);
+      } else {
+        const energyMultiplier = 1 + audioData.energy * 0.6 + ball.energy * 0.3;
+        const pulseMultiplier = 1 + Math.sin(ball.pulsePhase) * ball.energy * 0.12;
+        const dynamicsMultiplier = 0.9 + analysis.dynamics.current * 0.3;
+        const targetRadius = ball.baseRadius * energyMultiplier * pulseMultiplier * dynamicsMultiplier;
+
+        ball.radius = Math.min(targetRadius, ball.maxRadius);
+      }
+
+      ball.pulsePhase += 0.05;
+
+      // Update points
+      ball.points.forEach((point, i) => {
+        if (isIdle) {
+          const breathNoise = fractalNoise2D(
+            Math.cos(point.angle) * 0.15 + idleTimeRef.current * 0.015,
+            Math.sin(point.angle) * 0.15 + idleTimeRef.current * 0.015,
+            2,
+            0.5
+          );
+
+          point.targetRadius = ball.radius * (1 + breathNoise * 0.05);
+          point.localEnergy = 0.02;
+        } else {
+          const freqIndex = Math.floor((i / ball.points.length) * bufferLength);
+          const freqValue = dataArray[freqIndex] / 255;
+
+          const noiseSpeed = 0.08 + (1 - (analysis.rhythm.consistency || 0.5)) * 0.15;
+          const noiseValue = fractalNoise2D(
+            Math.cos(point.angle) * 0.5 + timeRef.current * noiseSpeed,
+            Math.sin(point.angle) * 0.5 + timeRef.current * noiseSpeed,
+            4,
+            0.5
+          );
+
+          const currentShapeRadius = getShapeRadius(point.angle, ball.shapeMode, ball.radius, point, timeRef.current);
+          const targetShapeRadius = getShapeRadius(point.angle, ball.targetShapeMode, ball.radius, point, timeRef.current);
+
+          const easeInOutCubic = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+          const easedProgress = easeInOutCubic(ball.shapeMorphProgress);
+          const morphedShapeRadius = currentShapeRadius + (targetShapeRadius - currentShapeRadius) * easedProgress;
+
+          const freqInfluence = freqValue * 0.25;
+          const noiseInfluence = noiseValue * 0.15;
+          const harmonyInfluence = analysis.harmony.complexity * 0.2;
+          const pitchInfluence = analysis.pitch.velocity * 0.18;
+
+          point.localEnergy += (freqValue - point.localEnergy) * 0.1;
+          const localInfluence = point.localEnergy * 0.15;
+
+          const totalInfluence = freqInfluence + noiseInfluence + harmonyInfluence + pitchInfluence + localInfluence;
+          const clampedInfluence = Math.max(-ball.sentientBoundary, Math.min(ball.sentientBoundary, totalInfluence));
+
+          point.targetRadius = morphedShapeRadius * (1 + clampedInfluence);
+        }
+
+        const responseSpeed = isIdle ? 0.015 : 0.045 + (analysis.timbre.roughness || 0) * 0.055;
+        const diff = point.targetRadius - point.radius;
+        ball.velocities[i].radial += diff * responseSpeed;
+        ball.velocities[i].radial *= isIdle ? 0.93 : 0.87;
+
+        point.radius += ball.velocities[i].radial;
+
+        const rotationSpeed = isIdle ? 0.00005 : (analysis.melody.direction || 0) * 0.0004 * (analysis.texture.density || 0.5);
+        point.angle += rotationSpeed;
+      });
+
+      // Render
+      const bgColor = isIdle
+        ? getColorFromPalette(activePalette, 0.1, 0.1)
+        : bassToDeepColor(audioData.bassIntensity * 0.5, activePalette);
+
+      const bgLightness = isIdle ? Math.max(3, bgColor.l - 48) : Math.max(5, bgColor.l - 35);
+      ctx.fillStyle = hslToString({ h: bgColor.h, s: bgColor.s, l: bgLightness }, 1);
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Outer glow
+      if (!isIdle || idleTimeRef.current < 2) {
+        const glowIntensity = isIdle ? 0.05 : audioData.energy;
+        const outerGlow = ctx.createRadialGradient(ball.x, ball.y, 0, ball.x, ball.y, ball.radius * 2.5);
+        const glowColor = isIdle
+          ? getColorFromPalette(activePalette, 0.3, 0.1)
+          : trebleToLightColor(audioData.highIntensity, activePalette);
+        const radiantGlow = toRadiantGlow(glowColor, glowIntensity);
+        outerGlow.addColorStop(0, hslToString(radiantGlow, 0.15 * glowIntensity));
+        outerGlow.addColorStop(0.4, hslToString(glowColor, 0.08 * glowIntensity));
+        outerGlow.addColorStop(1, 'transparent');
+        ctx.fillStyle = outerGlow;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+
+      // Draw ball
+      ctx.save();
+      ctx.translate(ball.x, ball.y);
+
+      ctx.beginPath();
+      ball.points.forEach((point, i) => {
+        const x = Math.cos(point.angle) * point.radius;
+        const y = Math.sin(point.angle) * point.radius;
+
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          const prevPoint = ball.points[i - 1];
+          const prevX = Math.cos(prevPoint.angle) * prevPoint.radius;
+          const prevY = Math.sin(prevPoint.angle) * prevPoint.radius;
+          const cpX = (prevX + x) / 2;
+          const cpY = (prevY + y) / 2;
+          ctx.quadraticCurveTo(prevX, prevY, cpX, cpY);
+        }
+      });
+      ctx.closePath();
+
+      const mainGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, ball.radius);
+      const energyLevel = isIdle ? 0.1 : audioData.energy;
+      const corePosition = 0.2 + (analysis.timbre.brightness || 0.5) * 0.3;
+      const midPosition = 0.5 + (analysis.harmony.complexity || 0) * 0.2;
+      const edgePosition = 0.8 + energyLevel * 0.15;
+
+      const coreColor = toLuminous(getColorFromPalette(activePalette, corePosition, energyLevel), energyLevel);
+      const midColor = getColorFromPalette(activePalette, midPosition, energyLevel * 0.8);
+      const edgeColor = getColorFromPalette(activePalette, edgePosition, energyLevel * 0.6);
+
+      mainGradient.addColorStop(0, hslToString(coreColor, isIdle ? 0.7 : 0.95));
+      mainGradient.addColorStop(0.4, hslToString(midColor, isIdle ? 0.6 : 0.85));
+      mainGradient.addColorStop(0.7, hslToString(edgeColor, isIdle ? 0.4 : 0.7));
+      mainGradient.addColorStop(1, hslToString(edgeColor, isIdle ? 0.15 : 0.3));
+
+      ctx.fillStyle = mainGradient;
+      ctx.fill();
+
+      ctx.strokeStyle = hslToString(coreColor, isIdle ? 0.3 : 0.6);
+      ctx.lineWidth = isIdle ? 1 : 2 + audioData.energy * 4;
+      ctx.stroke();
+
+      ctx.restore();
+
+      // Inner core
+      if (!isIdle || Math.sin(idleTimeRef.current) > 0.5) {
+        const coreIntensity = isIdle ? 0.1 : audioData.energy;
+        const coreSize = ball.radius * 0.3 * (1 + Math.sin(timeRef.current * 3) * 0.2 * coreIntensity);
+        const coreGradient = ctx.createRadialGradient(ball.x, ball.y, 0, ball.x, ball.y, coreSize);
+        const innerCoreColor = toLuminous(getColorFromPalette(activePalette, 0.1, coreIntensity), isIdle ? 0.3 : 1);
+
+        coreGradient.addColorStop(0, hslToString(innerCoreColor, isIdle ? 0.5 : 0.95));
+        coreGradient.addColorStop(0.6, hslToString(coreColor, isIdle ? 0.3 : 0.65));
+        coreGradient.addColorStop(1, 'transparent');
+
+        ctx.globalCompositeOperation = 'screen';
+        ctx.fillStyle = coreGradient;
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, coreSize, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalCompositeOperation = 'source-over';
+      }
+
+      // Minimal particles in idle
+      if (isIdle && Math.random() < 0.008) {
+        const angle = Math.random() * Math.PI * 2;
+        const distance = ball.radius * 1.2;
+        const x = ball.x + Math.cos(angle) * distance;
+        const y = ball.y + Math.sin(angle) * distance;
+
+        const particleColor = getColorFromPalette(activePalette, Math.random(), 0.2);
+        ctx.fillStyle = hslToString(particleColor, 0.4);
+        ctx.beginPath();
+        ctx.arc(x, y, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (!isIdle && audioData.energy > 0.5) {
+        const numParticles = Math.floor(audioData.energy * 25);
+        for (let i = 0; i < numParticles; i++) {
+          const angle = (i / numParticles) * Math.PI * 2;
+          const distance = ball.radius * 1.5 + Math.sin(timeRef.current * 3 + i) * ball.radius * 0.5;
+          const x = ball.x + Math.cos(angle) * distance;
+          const y = ball.y + Math.sin(angle) * distance;
+
+          const particleSize = 2 + audioData.energy * 3;
+          const particlePosition = (i / numParticles);
+          const particleColor = toLuminous(getColorFromPalette(activePalette, particlePosition, audioData.energy), 0.8);
+
+          ctx.fillStyle = hslToString(particleColor, audioData.energy * 0.6);
+          ctx.beginPath();
+          ctx.arc(x, y, particleSize, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    };
+
+    animate();
+
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, [analyser, isPlaying]);
+
+  return <canvas ref={canvasRef} className="visualizer-canvas" />;
+};
+
+export default AudioVisualizerBall;
+
+
+
+
+
+
+===== FILE: AudioVisualizerCanvas.jsx =====
+import React, { useEffect, useRef } from 'react';
+import { generateUniquePalette, hslToString, getColorFromPalette, toLuminous, interpolatePalettes, bassToDeepColor, trebleToLightColor, toRadiantGlow } from '../utils/colorUtils';
+import { initNoise, fractalNoise2D } from '../utils/noise';
+
+const AudioVisualizerCanvas = ({ analyser, isPlaying }) => {
+  const canvasRef = useRef(null);
+  const animationRef = useRef(null);
+
+  const colorStateRef = useRef({
+    currentPalette: null,
+    nextPalette: null,
+    transitionProgress: 1,
+    initialized: false,
+    lastChangeTime: 0
+  });
+
+  const energyFieldRef = useRef({
+    centerX: 0,
+    centerY: 0,
+    maxRadius: 0,
+    points: [],
+    velocities: [],
+    energy: 0,
+    flowAngle: 0,
+    particles: [],
+    pulsePhase: 0
+  });
+
+  const musicAnalysisRef = useRef({
+    pitch: { current: 0, prev: 0, velocity: 0 },
+    harmony: { complexity: 0, richness: 0 },
+    dynamics: { current: 0 },
+    timbre: { brightness: 0.5 },
+    texture: { layering: 0 }
+  });
+
+  const timeRef = useRef(0);
+  const idleTimeRef = useRef(0);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const resizeCanvas = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+
+      const field = energyFieldRef.current;
+      field.centerX = canvas.width / 2;
+      field.centerY = canvas.height / 2;
+      field.maxRadius = Math.min(canvas.width, canvas.height) * 0.45;
+
+      initializeEnergyField();
+    };
+
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    return () => {
+      window.removeEventListener('resize', resizeCanvas);
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, []);
+
+  const initializeEnergyField = () => {
+    initNoise(Date.now() + Math.random() * 10000);
+
+    const field = energyFieldRef.current;
+    const numPoints = 144; // More points for smoother freeform
+
+    field.points = [];
+    field.velocities = [];
+
+    for (let i = 0; i < numPoints; i++) {
+      const angle = (i / numPoints) * Math.PI * 2;
+      field.points.push({
+        angle: angle,
+        radius: field.maxRadius * 0.6,
+        targetRadius: field.maxRadius * 0.6,
+        noiseOffset: Math.random() * 1000,
+        localEnergy: 0,
+        flowInfluence: Math.random(),
+        individualOffset: Math.random() * Math.PI * 2
+      });
+      field.velocities.push({ radial: 0, angular: 0 });
+    }
+
+    field.particles = [];
+  };
+
+  const analyzeMusic = (dataArray, bufferLength) => {
+    const analysis = musicAnalysisRef.current;
+
+    const bassRange = Math.floor(bufferLength * 0.08);
+    const midRange = Math.floor(bufferLength * 0.5);
+    const highMidRange = Math.floor(bufferLength * 0.7);
+
+    const bass = dataArray.slice(0, bassRange).reduce((a, b) => a + b, 0) / bassRange;
+    const mid = dataArray.slice(bassRange, midRange).reduce((a, b) => a + b, 0) / (midRange - bassRange);
+    const high = dataArray.slice(highMidRange).reduce((a, b) => a + b, 0) / (bufferLength - highMidRange);
+    const avg = dataArray.reduce((a, b) => a + b, 0) / bufferLength;
+
+    let weightedSum = 0, totalWeight = 0;
+    dataArray.forEach((value, index) => {
+      weightedSum += value * index;
+      totalWeight += value;
+    });
+
+    analysis.pitch.prev = analysis.pitch.current;
+    analysis.pitch.current = totalWeight > 0 ? (weightedSum / totalWeight) / bufferLength : 0.5;
+    analysis.pitch.velocity = Math.abs(analysis.pitch.current - analysis.pitch.prev);
+
+    const activeFreqs = dataArray.filter(v => v > 10).length;
+    analysis.harmony.richness = activeFreqs / bufferLength;
+
+    const bins = 8, binSize = Math.floor(bufferLength / bins);
+    const binEnergies = [];
+    for (let i = 0; i < bins; i++) {
+      const start = i * binSize;
+      const end = start + binSize;
+      binEnergies.push(dataArray.slice(start, end).reduce((a, b) => a + b, 0) / binSize);
+    }
+    const avgBinEnergy = binEnergies.reduce((a, b) => a + b) / bins;
+    const binVariance = binEnergies.reduce((acc, val) => acc + Math.abs(val - avgBinEnergy), 0) / bins;
+    analysis.harmony.complexity = Math.min(1, binVariance / 100);
+
+    analysis.dynamics.current = avg / 255;
+    analysis.timbre.brightness = analysis.pitch.current;
+
+    return {
+      bassIntensity: bass / 255,
+      midIntensity: mid / 255,
+      highIntensity: high / 255,
+      energy: avg / 255,
+      spectralCentroid: analysis.pitch.current,
+      harmonicRichness: analysis.harmony.richness
+    };
+  };
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const bufferLength = analyser ? analyser.frequencyBinCount : 1024;
+    const dataArray = new Uint8Array(bufferLength);
+
+    const animate = () => {
+      animationRef.current = requestAnimationFrame(animate);
+
+      timeRef.current += 0.016;
+
+      const colorState = colorStateRef.current;
+      const field = energyFieldRef.current;
+      const analysis = musicAnalysisRef.current;
+
+      let audioData = {
+        bassIntensity: 0,
+        midIntensity: 0,
+        highIntensity: 0,
+        energy: 0,
+        spectralCentroid: 0.5,
+        harmonicRichness: 0
+      };
+
+      const isIdle = !analyser || !isPlaying;
+
+      if (!isIdle) {
+        analyser.getByteFrequencyData(dataArray);
+        idleTimeRef.current = 0;
+        audioData = analyzeMusic(dataArray, bufferLength);
+      } else {
+        idleTimeRef.current += 0.016;
+        for (let i = 0; i < dataArray.length; i++) {
+          dataArray[i] = 0;
+        }
+      }
+
+      // Initialize palette
+      if (!colorState.initialized) {
+        try {
+          colorState.currentPalette = generateUniquePalette({
+            bassAvg: 0.5,
+            midAvg: 0.5,
+            highAvg: 0.5,
+            spectralCentroid: 0.5,
+            harmonicRichness: 0.5
+          });
+          colorState.transitionProgress = 1;
+          colorState.lastChangeTime = timeRef.current;
+          colorState.initialized = true;
+        } catch (err) {
+          colorState.currentPalette = {
+            colors: [{ h: 200, s: 70, l: 60 }],
+            baseHue: 200,
+            type: 'fallback'
+          };
+          colorState.initialized = true;
+        }
+      }
+
+      // Palette transitions
+      const timeSinceLastChange = timeRef.current - colorState.lastChangeTime;
+      const shouldChangePalette = (
+        timeSinceLastChange > 12 + Math.random() * 6 ||
+        (audioData.harmonicRichness > 0.75 && timeSinceLastChange > 6)
+      );
+
+      if (shouldChangePalette && colorState.transitionProgress >= 1) {
+        try {
+          colorState.nextPalette = generateUniquePalette({
+            bassAvg: audioData.bassIntensity,
+            midAvg: audioData.midIntensity,
+            highAvg: audioData.highIntensity,
+            spectralCentroid: audioData.spectralCentroid,
+            harmonicRichness: audioData.harmonicRichness
+          });
+          colorState.transitionProgress = 0;
+          colorState.lastChangeTime = timeRef.current;
+        } catch (err) {
+          console.error('Palette generation error:', err);
+        }
+      }
+
+      if (colorState.transitionProgress < 1 && colorState.nextPalette) {
+        colorState.transitionProgress += 0.004;
+        if (colorState.transitionProgress >= 1) {
+          colorState.currentPalette = colorState.nextPalette;
+          colorState.nextPalette = null;
+        }
+      }
+
+      const activePalette = colorState.transitionProgress < 1 && colorState.nextPalette
+        ? interpolatePalettes(colorState.currentPalette, colorState.nextPalette, colorState.transitionProgress)
+        : colorState.currentPalette;
+
+      // Background - VIVID
+      if (isIdle) {
+        const bgColor = getColorFromPalette(activePalette, 0.1, 0.2);
+        ctx.fillStyle = hslToString({ h: bgColor.h, s: bgColor.s, l: Math.max(3, bgColor.l - 48) }, 1);
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      } else {
+        const bgColor = bassToDeepColor(audioData.bassIntensity * 0.6, activePalette);
+        ctx.fillStyle = hslToString({ h: bgColor.h, s: Math.min(100, bgColor.s + 10), l: Math.max(5, bgColor.l - 32) }, 1);
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+
+      // Update field energy
+      if (isIdle) {
+        field.energy = 0.08;
+        field.flowAngle += 0.001;
+      } else {
+        field.energy += (audioData.energy - field.energy) * 0.15; // Faster response
+        field.flowAngle += (audioData.midIntensity * 0.03 + audioData.bassIntensity * 0.02);
+      }
+
+      field.pulsePhase += 0.06;
+
+      // Update points - FREEFORM ENERGY FIELD
+      field.points.forEach((point, i) => {
+        const freqIndex = Math.floor((i / field.points.length) * bufferLength);
+        const freqValue = dataArray[freqIndex] / 255;
+
+        if (isIdle) {
+          // Minimal breathing
+          const breathNoise = fractalNoise2D(
+            Math.cos(point.angle) * 0.2 + idleTimeRef.current * 0.02,
+            Math.sin(point.angle) * 0.2 + idleTimeRef.current * 0.02,
+            2,
+            0.5
+          );
+
+          const baseRadius = field.maxRadius * 0.5;
+          const breathAmount = breathNoise * 0.08 + Math.sin(idleTimeRef.current * 0.5 + point.individualOffset) * 0.03;
+          point.targetRadius = baseRadius * (1 + breathAmount);
+          point.localEnergy = 0.05;
+        } else {
+          // EXTREME FREEFORM - Driven by music
+          // Multi-layered noise for organic chaos
+          const noiseValue1 = fractalNoise2D(
+            Math.cos(point.angle + field.flowAngle) * 0.8 + timeRef.current * 0.25,
+            Math.sin(point.angle + field.flowAngle) * 0.8 + timeRef.current * 0.25,
+            6, // More octaves = more detail
+            0.6
+          );
+
+          const noiseValue2 = fractalNoise2D(
+            Math.cos(point.angle * 2) * 0.5 + timeRef.current * 0.15,
+            Math.sin(point.angle * 2) * 0.5 + timeRef.current * 0.15,
+            4,
+            0.5
+          );
+
+          // Frequency-specific influences
+          const freqInfluence = freqValue * 0.7; // Strong freq response
+          const noiseInfluence = (noiseValue1 * 0.5 + noiseValue2 * 0.3);
+          const bassInfluence = audioData.bassIntensity * 0.6; // Bass pushes outward
+          const highInfluence = audioData.highIntensity * 0.5; // Highs create spikes
+
+          // Flow creates directional waves
+          const flowInfluence = Math.sin(point.angle * 4 + field.flowAngle * 3) * audioData.midIntensity * 0.5;
+
+          // Harmony creates complexity
+          const harmonyInfluence = analysis.harmony.complexity * 0.4 * Math.sin(point.angle * 5 + timeRef.current);
+
+          // Pitch velocity creates rapid changes
+          const pitchInfluence = analysis.pitch.velocity * 0.6;
+
+          // Local energy per point
+          point.localEnergy += (freqValue - point.localEnergy) * 0.2;
+          const localInfluence = point.localEnergy * 0.5;
+
+          // Individual point offset for uniqueness
+          const individualInfluence = Math.sin(timeRef.current * 2 + point.individualOffset) * 0.2;
+
+          const totalInfluence = freqInfluence + noiseInfluence + bassInfluence + highInfluence +
+                                 flowInfluence + harmonyInfluence + pitchInfluence + localInfluence + individualInfluence;
+
+          // Dynamic base size with pulse
+          const energySize = 0.35 + field.energy * 0.7;
+          const pulseMultiplier = 1 + Math.sin(field.pulsePhase + point.angle * 3) * field.energy * 0.25;
+          const baseRadius = field.maxRadius * energySize * pulseMultiplier;
+
+          // Allow large deformations for freeform
+          point.targetRadius = baseRadius * (1 + totalInfluence * 1.2);
+        }
+
+        // Fast, responsive physics
+        const responseSpeed = isIdle ? 0.02 : 0.12;
+        const diff = point.targetRadius - point.radius;
+        field.velocities[i].radial += diff * responseSpeed;
+        field.velocities[i].radial *= isIdle ? 0.9 : 0.8; // Less damping = more movement
+
+        point.radius += field.velocities[i].radial;
+        point.radius = Math.max(field.maxRadius * 0.2, Math.min(point.radius, field.maxRadius * 1.2)); // Allow overshoot
+
+        // Dynamic rotation
+        const rotationSpeed = isIdle ? 0.0001 : audioData.midIntensity * 0.003 + audioData.energy * 0.002;
+        point.angle += rotationSpeed;
+      });
+
+      // VIVID Outer glow
+      if (!isIdle || idleTimeRef.current < 2) {
+        const glowIntensity = isIdle ? 0.1 : audioData.energy;
+        const outerGlow = ctx.createRadialGradient(
+          field.centerX, field.centerY, 0,
+          field.centerX, field.centerY, field.maxRadius * 2.5
+        );
+        const glowColor = isIdle
+          ? getColorFromPalette(activePalette, 0.3, 0.2)
+          : trebleToLightColor(audioData.highIntensity, activePalette);
+        const radiantGlow = toRadiantGlow(glowColor, glowIntensity);
+
+        outerGlow.addColorStop(0, hslToString(radiantGlow, 0.35 * glowIntensity));
+        outerGlow.addColorStop(0.35, hslToString(glowColor, 0.2 * glowIntensity));
+        outerGlow.addColorStop(1, 'transparent');
+        ctx.fillStyle = outerGlow;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+
+      // Draw main field with VIVID colors
+      ctx.save();
+      ctx.translate(field.centerX, field.centerY);
+
+      // More layers for richness
+      const numLayers = isIdle ? 2 : 5;
+      for (let layer = 0; layer < numLayers; layer++) {
+        const layerScale = 1 + layer * 0.3;
+        const layerAlpha = isIdle
+          ? (1 - layer * 0.4) * 0.15
+          : (1 - layer * 0.2) * (0.4 + field.energy * 0.5);
+
+        ctx.beginPath();
+        field.points.forEach((point, i) => {
+          const x = Math.cos(point.angle) * point.radius * layerScale;
+          const y = Math.sin(point.angle) * point.radius * layerScale;
+
+          if (i === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            const prevPoint = field.points[i - 1];
+            const prevX = Math.cos(prevPoint.angle) * prevPoint.radius * layerScale;
+            const prevY = Math.sin(prevPoint.angle) * prevPoint.radius * layerScale;
+            const cpX = (prevX + x) / 2;
+            const cpY = (prevY + y) / 2;
+            ctx.quadraticCurveTo(prevX, prevY, cpX, cpY);
+          }
+        });
+        ctx.closePath();
+
+        const avgRadius = field.points.reduce((sum, p) => sum + p.radius, 0) / field.points.length;
+        const layerGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, avgRadius * layerScale);
+
+        const colorPos = 0.2 + layer * 0.15;
+        const layerColor = getColorFromPalette(activePalette, colorPos, field.energy + 0.4);
+        const luminousColor = toLuminous(layerColor, field.energy * 1.2);
+
+        // VIVID saturation boost
+        luminousColor.s = Math.min(100, luminousColor.s + 15);
+        layerColor.s = Math.min(100, layerColor.s + 10);
+
+        layerGradient.addColorStop(0, hslToString(luminousColor, layerAlpha * 1));
+        layerGradient.addColorStop(0.5, hslToString(layerColor, layerAlpha * 0.85));
+        layerGradient.addColorStop(1, hslToString(layerColor, layerAlpha * 0.2));
+
+        ctx.globalCompositeOperation = 'screen';
+        ctx.fillStyle = layerGradient;
+        ctx.fill();
+      }
+
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.restore();
+
+      // VIVID Inner core
+      if (!isIdle && audioData.energy > 0.25) {
+        const coreSize = field.maxRadius * 0.3 * (1 + Math.sin(timeRef.current * 3) * 0.25 * audioData.energy);
+        const coreGradient = ctx.createRadialGradient(
+          field.centerX, field.centerY, 0,
+          field.centerX, field.centerY, coreSize
+        );
+        const coreColor = toLuminous(getColorFromPalette(activePalette, 0.1, audioData.energy), 1.5);
+        coreColor.s = Math.min(100, coreColor.s + 20);
+
+        coreGradient.addColorStop(0, hslToString(coreColor, 0.95));
+        coreGradient.addColorStop(0.5, hslToString(coreColor, 0.7));
+        coreGradient.addColorStop(1, 'transparent');
+
+        ctx.globalCompositeOperation = 'screen';
+        ctx.fillStyle = coreGradient;
+        ctx.beginPath();
+        ctx.arc(field.centerX, field.centerY, coreSize, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalCompositeOperation = 'source-over';
+      }
+
+      // Energy rings
+      if (!isIdle && audioData.energy > 0.3) {
+        const numRings = Math.floor(2 + analysis.texture.layering * 4);
+        for (let i = 0; i < numRings; i++) {
+          const avgRadius = field.points.reduce((sum, p) => sum + p.radius, 0) / field.points.length;
+          const ringRadius = avgRadius * (1.15 + i * 0.25);
+          const ringAlpha = (1 - i * 0.25) * audioData.energy * 0.5;
+          const ringPosition = 0.3 + i * 0.15;
+          const ringColor = getColorFromPalette(activePalette, ringPosition, audioData.energy);
+          ringColor.s = Math.min(100, ringColor.s + 15);
+
+          ctx.strokeStyle = hslToString(ringColor, ringAlpha);
+          ctx.lineWidth = 2 + audioData.energy * 2;
+          ctx.beginPath();
+          ctx.arc(field.centerX, field.centerY, ringRadius + Math.sin(timeRef.current * 2 + i) * 15, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+
+      // Spawn more particles
+      if (isIdle) {
+        if (Math.random() < 0.015) {
+          const randomPoint = field.points[Math.floor(Math.random() * field.points.length)];
+          const x = field.centerX + Math.cos(randomPoint.angle) * randomPoint.radius * 0.8;
+          const y = field.centerY + Math.sin(randomPoint.angle) * randomPoint.radius * 0.8;
+
+          field.particles.push({
+            x, y,
+            vx: (Math.random() - 0.5) * 0.5,
+            vy: (Math.random() - 0.5) * 0.5,
+            life: 1,
+            colorOffset: Math.random(),
+            size: 1 + Math.random() * 1.5
+          });
+        }
+      } else if (audioData.energy > 0.35 && Math.random() < audioData.energy * 0.35) {
+        const randomPoint = field.points[Math.floor(Math.random() * field.points.length)];
+        const x = field.centerX + Math.cos(randomPoint.angle) * randomPoint.radius;
+        const y = field.centerY + Math.sin(randomPoint.angle) * randomPoint.radius;
+
+        field.particles.push({
+          x, y,
+          vx: (Math.random() - 0.5) * 9,
+          vy: (Math.random() - 0.5) * 9,
+          life: 1,
+          colorOffset: Math.random(),
+          size: 2 + Math.random() * 5
+        });
+      }
+
+      // Update and render particles
+      field.particles = field.particles.filter(particle => {
+        particle.x += particle.vx;
+        particle.y += particle.vy;
+        particle.vx *= 0.97;
+        particle.vy *= 0.97;
+        particle.life -= isIdle ? 0.01 : 0.02;
+
+        if (particle.life <= 0) return false;
+
+        const particleColor = getColorFromPalette(activePalette, particle.colorOffset, field.energy + 0.3);
+        particleColor.s = Math.min(100, particleColor.s + 15);
+        ctx.fillStyle = hslToString(particleColor, particle.life * 0.85);
+        ctx.beginPath();
+        ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+        ctx.fill();
+
+        return true;
+      });
+    };
+
+    animate();
+
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, [analyser, isPlaying]);
+
+  return <canvas ref={canvasRef} className="visualizer-canvas" />;
+};
+
+export default AudioVisualizerCanvas;
+
+
+
+
+
+
+===== FILE: colorUtils.js =====
+// Main vibrant palettes
+const SPECTRAL_PALETTES = {
+  electric_storm: {
+    name: 'Electric Storm',
+    colors: [
+      { h: 280, s: 100, l: 65 }, // Vivid purple
+      { h: 260, s: 95, l: 70 },  // Electric violet
+      { h: 200, s: 100, l: 60 }, // Bright cyan
+      { h: 180, s: 100, l: 65 }, // Electric turquoise
+      { h: 290, s: 95, l: 68 }   // Neon magenta
+    ],
+    characteristics: 'electric, vivid, high-energy'
+  },
+
+  volcanic_fire: {
+    name: 'Volcanic Fire',
+    colors: [
+      { h: 0, s: 100, l: 60 },   // Intense red
+      { h: 15, s: 100, l: 65 },  // Bright red-orange
+      { h: 30, s: 100, l: 60 },  // Vivid orange
+      { h: 45, s: 100, l: 65 },  // Golden fire
+      { h: 350, s: 95, l: 60 }   // Hot pink-red
+    ],
+    characteristics: 'intense, warm, powerful'
+  },
+
+  cosmic_ocean: {
+    name: 'Cosmic Ocean',
+    colors: [
+      { h: 190, s: 100, l: 55 }, // Deep cyan
+      { h: 210, s: 95, l: 60 },  // Ocean blue
+      { h: 230, s: 100, l: 65 }, // Vivid blue
+      { h: 250, s: 90, l: 70 },  // Light electric blue
+      { h: 200, s: 95, l: 58 }   // Bright aqua
+    ],
+    characteristics: 'deep, flowing, immersive'
+  },
+
+  neon_jungle: {
+    name: 'Neon Jungle',
+    colors: [
+      { h: 120, s: 100, l: 55 }, // Vivid green
+      { h: 140, s: 95, l: 60 },  // Bright lime
+      { h: 160, s: 90, l: 65 },  // Neon teal
+      { h: 100, s: 100, l: 60 }, // Electric yellow-green
+      { h: 180, s: 95, l: 60 }   // Bright cyan-green
+    ],
+    characteristics: 'vibrant, natural-electric, alive'
+  },
+
+  supernova_burst: {
+    name: 'Supernova Burst',
+    colors: [
+      { h: 50, s: 100, l: 65 },  // Bright yellow
+      { h: 40, s: 100, l: 60 },  // Golden orange
+      { h: 20, s: 100, l: 65 },  // Vivid orange
+      { h: 60, s: 95, l: 70 },   // Light gold
+      { h: 30, s: 100, l: 62 }   // Amber glow
+    ],
+    characteristics: 'explosive, radiant, brilliant'
+  },
+
+  crystal_prism: {
+    name: 'Crystal Prism',
+    colors: [
+      { h: 310, s: 100, l: 65 }, // Vivid magenta
+      { h: 330, s: 95, l: 70 },  // Hot pink
+      { h: 280, s: 100, l: 65 }, // Bright purple
+      { h: 200, s: 100, l: 65 }, // Cyan flash
+      { h: 350, s: 100, l: 68 }  // Pink-red
+    ],
+    characteristics: 'prismatic, crystalline, multifaceted'
+  },
+
+  aurora_borealis: {
+    name: 'Aurora Borealis',
+    colors: [
+      { h: 150, s: 95, l: 60 },  // Aurora green
+      { h: 170, s: 100, l: 65 }, // Electric teal
+      { h: 270, s: 90, l: 65 },  // Purple aurora
+      { h: 320, s: 95, l: 60 },  // Magenta glow
+      { h: 190, s: 85, l: 68 }   // Sky blue
+    ],
+    characteristics: 'ethereal, natural, otherworldly'
+  },
+
+  plasma_core: {
+    name: 'Plasma Core',
+    colors: [
+      { h: 300, s: 100, l: 60 }, // Deep magenta
+      { h: 280, s: 100, l: 65 }, // Vivid purple
+      { h: 260, s: 95, l: 70 },  // Electric violet
+      { h: 240, s: 100, l: 65 }, // Bright blue-purple
+      { h: 320, s: 95, l: 62 }   // Hot magenta
+    ],
+    characteristics: 'energetic, core-like, pulsing'
+  }
+};
+
+// Transition palettes - smoother, gradient-like for seamless transitions
+const TRANSITION_PALETTES = {
+  sunset_fade: {
+    name: 'Sunset Fade',
+    colors: [
+      { h: 30, s: 85, l: 65 },   // Warm orange
+      { h: 20, s: 80, l: 68 },   // Soft red-orange
+      { h: 350, s: 75, l: 70 },  // Pink-red
+      { h: 340, s: 80, l: 68 },  // Rose
+      { h: 10, s: 85, l: 65 }    // Peachy orange
+    ],
+    characteristics: 'warm, transitional, flowing'
+  },
+
+  ocean_drift: {
+    name: 'Ocean Drift',
+    colors: [
+      { h: 200, s: 75, l: 65 },  // Soft cyan
+      { h: 210, s: 70, l: 68 },  // Light blue
+      { h: 220, s: 75, l: 70 },  // Sky blue
+      { h: 190, s: 70, l: 65 },  // Aqua
+      { h: 205, s: 75, l: 67 }   // Medium cyan
+    ],
+    characteristics: 'cool, flowing, serene'
+  },
+
+  forest_mist: {
+    name: 'Forest Mist',
+    colors: [
+      { h: 140, s: 70, l: 65 },  // Soft green
+      { h: 150, s: 75, l: 68 },  // Muted teal
+      { h: 160, s: 70, l: 70 },  // Light cyan-green
+      { h: 130, s: 75, l: 65 },  // Yellow-green
+      { h: 145, s: 72, l: 67 }   // Forest green
+    ],
+    characteristics: 'natural, misty, peaceful'
+  },
+
+  twilight_glow: {
+    name: 'Twilight Glow',
+    colors: [
+      { h: 270, s: 75, l: 68 },  // Soft purple
+      { h: 280, s: 70, l: 70 },  // Light violet
+      { h: 260, s: 75, l: 68 },  // Medium purple
+      { h: 290, s: 70, l: 70 },  // Lavender
+      { h: 275, s: 73, l: 69 }   // Twilight purple
+    ],
+    characteristics: 'mysterious, transitional, soft'
+  }
+};
+
+// Combine all palettes
+const ALL_PALETTES = { ...SPECTRAL_PALETTES, ...TRANSITION_PALETTES };
+
+// Time-of-day detection and influence
+export const getTimeOfDay = () => {
+  const hour = new Date().getHours();
+
+  if (hour >= 5 && hour < 8) {
+    return 'dawn'; // 5-8 AM: Soft awakening
+  } else if (hour >= 8 && hour < 12) {
+    return 'morning'; // 8-12 PM: Bright, hopeful
+  } else if (hour >= 12 && hour < 17) {
+    return 'noon'; // 12-5 PM: High energy, clarity
+  } else if (hour >= 17 && hour < 20) {
+    return 'dusk'; // 5-8 PM: Deep purples, reflection
+  } else if (hour >= 20 && hour < 23) {
+    return 'night'; // 8-11 PM: Dark void, sharp pulses
+  } else {
+    return 'midnight'; // 11 PM-5 AM: Deepest, most mysterious
+  }
+};
+
+// Apply time-of-day color shifts to a color
+export const applyTimeShift = (color, timeOfDay) => {
+  let { h, s, l } = color;
+
+  switch (timeOfDay) {
+    case 'dawn':
+      // Soft, misty pastels - hope, awakening
+      s = Math.max(40, s * 0.7); // Reduce saturation
+      l = Math.min(75, l + 10); // Increase lightness
+      h = (h + 15) % 360; // Slight warm shift
+      break;
+
+    case 'morning':
+      // Bright, airy, optimistic
+      s = Math.min(100, s * 1.1); // Slight saturation boost
+      l = Math.min(80, l + 15); // Increase lightness
+      h = (h + 5) % 360; // Subtle warm shift
+      break;
+
+    case 'noon':
+      // High contrast, high frequency color - clarity, energy
+      s = Math.min(100, s * 1.2); // Maximum saturation
+      l = Math.max(40, Math.min(70, l)); // Balanced lightness
+      // No hue shift - pure colors
+      break;
+
+    case 'dusk':
+      // Deep purples, slow fades - reflection, sensuality
+      s = Math.min(100, s * 0.9); // Slight saturation reduction
+      l = Math.max(30, l - 10); // Decrease lightness
+      h = (h - 20 + 360) % 360; // Shift toward purple/blue
+      break;
+
+    case 'night':
+      // Dark void tones with sharp pulses - mystery, immersion
+      s = Math.min(100, s * 1.1); // Maintain saturation for vibrancy
+      l = Math.max(20, l - 20); // Significant darkness
+      h = (h - 30 + 360) % 360; // Shift toward deep blues/purples
+      break;
+
+    case 'midnight':
+      // Deepest, most mysterious
+      s = Math.min(100, s * 0.8); // Reduced saturation
+      l = Math.max(15, l - 25); // Very dark
+      h = (h - 40 + 360) % 360; // Strong shift to deep violets/blues
+      break;
+  }
+
+  return { h, s, l };
+};
+
+// Generate palette based on audio characteristics and time of day
+export const generateUniquePalette = (audioSignature) => {
+  const { bassAvg, midAvg, highAvg, spectralCentroid, harmonicRichness } = audioSignature;
+  const timeOfDay = getTimeOfDay();
+
+  let paletteType;
+  const totalEnergy = (bassAvg + midAvg + highAvg) / 3;
+
+  // Time-of-day influences palette selection
+  const timeInfluence = {
+    dawn: { preferTransition: true, preferSoft: true },
+    morning: { preferTransition: false, preferSoft: false },
+    noon: { preferTransition: false, preferSoft: false },
+    dusk: { preferTransition: true, preferSoft: true },
+    night: { preferTransition: false, preferSoft: false },
+    midnight: { preferTransition: true, preferSoft: true }
+  };
+
+  const timePrefs = timeInfluence[timeOfDay];
+
+  // Choose main vibrant palettes for active music
+  if (totalEnergy > 0.6) {
+    // High energy - use vibrant palettes (but respect time preferences)
+    if (timePrefs.preferSoft && timeOfDay === 'dawn') {
+      paletteType = 'aurora_borealis'; // Softer for dawn
+    } else if (spectralCentroid > 0.7 && highAvg > 0.6) {
+      paletteType = 'electric_storm';
+    } else if (bassAvg > 0.7) {
+      paletteType = 'volcanic_fire';
+    } else if (harmonicRichness > 0.7) {
+      paletteType = 'crystal_prism';
+    } else if (midAvg > 0.6) {
+      paletteType = 'neon_jungle';
+    } else {
+      paletteType = Math.random() < 0.5 ? 'supernova_burst' : 'plasma_core';
+    }
+  } else if (totalEnergy > 0.3) {
+    // Medium energy - mix of vibrant and transition
+    if (timePrefs.preferTransition) {
+      // Time prefers transition palettes
+      if (timeOfDay === 'dusk') {
+        paletteType = 'sunset_fade';
+      } else if (timeOfDay === 'dawn') {
+        paletteType = 'ocean_drift';
+      } else {
+        paletteType = Math.random() < 0.5 ? 'aurora_borealis' : 'twilight_glow';
+      }
+    } else if (spectralCentroid > 0.6) {
+      paletteType = 'cosmic_ocean';
+    } else if (bassAvg > midAvg) {
+      paletteType = 'sunset_fade';
+    } else {
+      paletteType = Math.random() < 0.5 ? 'aurora_borealis' : 'twilight_glow';
+    }
+  } else {
+    // Low energy - use transition palettes (time-appropriate)
+    if (timeOfDay === 'dawn') {
+      paletteType = 'ocean_drift'; // Soft, awakening
+    } else if (timeOfDay === 'dusk') {
+      paletteType = 'sunset_fade'; // Warm, reflective
+    } else if (timeOfDay === 'midnight') {
+      paletteType = 'twilight_glow'; // Mysterious
+    } else {
+      const transitionTypes = ['sunset_fade', 'ocean_drift', 'forest_mist', 'twilight_glow'];
+      paletteType = transitionTypes[Math.floor(Math.random() * transitionTypes.length)];
+    }
+  }
+
+  const selectedPalette = ALL_PALETTES[paletteType];
+
+  // Apply time-of-day shifts to all colors in the palette
+  const timeShiftedColors = selectedPalette.colors.map(color =>
+    applyTimeShift(color, timeOfDay)
+  );
+
+  const baseHue = timeShiftedColors[0].h;
+
+  return {
+    hues: timeShiftedColors.map(c => c.h),
+    colors: timeShiftedColors,
+    name: selectedPalette.name,
+    type: paletteType,
+    baseHue: baseHue,
+    warmth: bassAvg > highAvg ? 0.7 : 0.3,
+    isTransition: TRANSITION_PALETTES.hasOwnProperty(paletteType),
+    timeOfDay: timeOfDay
+  };
+};
+
+// Interpolate between two palettes for smooth transitions
+export const interpolatePalettes = (palette1, palette2, t) => {
+  if (!palette1 || !palette2) return palette1 || palette2;
+
+  const interpolatedColors = palette1.colors.map((color1, index) => {
+    const color2 = palette2.colors[index] || palette2.colors[0];
+
+    // Handle hue interpolation (shortest path around color wheel)
+    let h1 = color1.h;
+    let h2 = color2.h;
+    let hDiff = h2 - h1;
+
+    if (Math.abs(hDiff) > 180) {
+      if (hDiff > 0) h1 += 360;
+      else h2 += 360;
+    }
+
+    return {
+      h: (h1 + (h2 - h1) * t) % 360,
+      s: color1.s + (color2.s - color1.s) * t,
+      l: color1.l + (color2.l - color1.l) * t
+    };
+  });
+
+  return {
+    colors: interpolatedColors,
+    hues: interpolatedColors.map(c => c.h),
+    baseHue: interpolatedColors[0].h,
+    name: t < 0.5 ? palette1.name : palette2.name,
+    type: t < 0.5 ? palette1.type : palette2.type,
+    warmth: palette1.warmth + (palette2.warmth - palette1.warmth) * t,
+    isTransition: true,
+    timeOfDay: t < 0.5 ? (palette1.timeOfDay || getTimeOfDay()) : (palette2.timeOfDay || getTimeOfDay())
+  };
+};
+
+// Get color from palette with smooth interpolation
+export const getColorFromPalette = (palette, position, energy = 0.5) => {
+  if (!palette || !palette.colors || palette.colors.length === 0) {
+    return { h: 200, s: 70, l: 60 };
+  }
+
+  const colors = palette.colors;
+  position = Math.max(0, Math.min(1, position));
+
+  const index = position * (colors.length - 1);
+  const lowerIndex = Math.floor(index);
+  const upperIndex = Math.min(Math.ceil(index), colors.length - 1);
+  const t = index - lowerIndex;
+
+  const lowerColor = colors[lowerIndex];
+  const upperColor = colors[upperIndex];
+
+  if (!lowerColor || !upperColor) {
+    return { h: 200, s: 70, l: 60 };
+  }
+
+  const h = lowerColor.h + (upperColor.h - lowerColor.h) * t;
+  const s = Math.min(100, (lowerColor.s + (upperColor.s - lowerColor.s) * t) + energy * 15);
+  const l = lowerColor.l + (upperColor.l - lowerColor.l) * t + energy * 10;
+
+  if (isNaN(h) || isNaN(s) || isNaN(l)) {
+    return { h: 200, s: 70, l: 60 };
+  }
+
+  return { h, s, l };
+};
+
+export const hslToString = (hsl, alpha = 1) => {
+  if (!hsl || typeof hsl.h === 'undefined' || typeof hsl.s === 'undefined' || typeof hsl.l === 'undefined') {
+    return 'hsla(200, 70%, 60%, 1)';
+  }
+
+  const h = isNaN(hsl.h) ? 200 : Math.round(hsl.h);
+  const s = isNaN(hsl.s) ? 70 : Math.round(Math.max(0, Math.min(100, hsl.s)));
+  const l = isNaN(hsl.l) ? 60 : Math.round(Math.max(0, Math.min(100, hsl.l)));
+  const a = isNaN(alpha) ? 1 : Math.max(0, Math.min(1, alpha));
+
+  return `hsla(${h}, ${s}%, ${l}%, ${a})`;
+};
+
+export const bassToDeepColor = (bassIntensity, palette) => {
+  let color;
+
+  if (palette && palette.type === 'volcanic_fire') {
+    color = palette.colors[Math.floor(bassIntensity * (palette.colors.length - 1))];
+    color = {
+      h: color.h,
+      s: Math.min(100, color.s + bassIntensity * 15),
+      l: Math.max(20, color.l - bassIntensity * 20)
+    };
+  } else {
+    const baseHue = palette ? palette.baseHue : 0;
+    const hue = (baseHue - bassIntensity * 30 + 360) % 360;
+    const saturation = 75 + bassIntensity * 20;
+    const lightness = Math.max(25, 50 - bassIntensity * 25);
+    color = { h: hue, s: saturation, l: lightness };
+  }
+
+  // Apply time-of-day shift if palette has time info
+  if (palette && palette.timeOfDay) {
+    color = applyTimeShift(color, palette.timeOfDay);
+  }
+
+  return color;
+};
+
+export const trebleToLightColor = (trebleIntensity, palette) => {
+  let color;
+
+  if (palette && palette.type === 'electric_storm') {
+    color = palette.colors[Math.floor(trebleIntensity * (palette.colors.length - 1))];
+    color = {
+      h: color.h,
+      s: Math.max(40, color.s - trebleIntensity * 10),
+      l: Math.min(85, color.l + trebleIntensity * 15)
+    };
+  } else {
+    const baseHue = palette ? palette.baseHue : 200;
+    const hue = (baseHue + trebleIntensity * 40) % 360;
+    const saturation = Math.max(35, 65 - trebleIntensity * 15);
+    const lightness = 60 + trebleIntensity * 20;
+    color = { h: hue, s: saturation, l: lightness };
+  }
+
+  // Apply time-of-day shift if palette has time info
+  if (palette && palette.timeOfDay) {
+    color = applyTimeShift(color, palette.timeOfDay);
+  }
+
+  return color;
+};
+
+export const toLuminous = (color, intensity = 1) => {
+  return {
+    h: color.h,
+    s: Math.min(100, color.s + intensity * 20),
+    l: Math.min(85, color.l + intensity * 15)
+  };
+};
+
+export const toRadiantGlow = (color, energy = 0.5) => {
+  return {
+    h: color.h,
+    s: Math.min(100, color.s + 30),
+    l: Math.min(90, color.l + 25 + energy * 15)
+  };
+};
+
+
+
+
+
+===== FILE: noise.js =====
+// Simplex-like noise functions for organic motion
+
+class NoiseGenerator {
+  constructor(seed = Date.now()) {
+    this.seed = seed;
+    this.permutation = this.generatePermutation();
+  }
+
+  generatePermutation() {
+    const p = [];
+    for (let i = 0; i < 256; i++) {
+      p[i] = i;
+    }
+
+    // Shuffle based on seed
+    let seed = this.seed;
+    for (let i = 255; i > 0; i--) {
+      seed = (seed * 16807) % 2147483647;
+      const j = Math.floor((seed / 2147483647) * (i + 1));
+      [p[i], p[j]] = [p[j], p[i]];
+    }
+
+    return [...p, ...p];
+  }
+
+  fade(t) {
+    return t * t * t * (t * (t * 6 - 15) + 10);
+  }
+
+  lerp(a, b, t) {
+    return a + t * (b - a);
+  }
+
+  grad(hash, x, y) {
+    const h = hash & 15;
+    const u = h < 8 ? x : y;
+    const v = h < 4 ? y : h === 12 || h === 14 ? x : 0;
+    return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
+  }
+
+  noise2D(x, y) {
+    const X = Math.floor(x) & 255;
+    const Y = Math.floor(y) & 255;
+
+    x -= Math.floor(x);
+    y -= Math.floor(y);
+
+    const u = this.fade(x);
+    const v = this.fade(y);
+
+    const a = this.permutation[X] + Y;
+    const aa = this.permutation[a];
+    const ab = this.permutation[a + 1];
+    const b = this.permutation[X + 1] + Y;
+    const ba = this.permutation[b];
+    const bb = this.permutation[b + 1];
+
+    return this.lerp(
+      this.lerp(
+        this.grad(this.permutation[aa], x, y),
+        this.grad(this.permutation[ba], x - 1, y),
+        u
+      ),
+      this.lerp(
+        this.grad(this.permutation[ab], x, y - 1),
+        this.grad(this.permutation[bb], x - 1, y - 1),
+        u
+      ),
+      v
+    );
+  }
+
+  fractalNoise2D(x, y, octaves = 4, persistence = 0.5) {
+    let total = 0;
+    let frequency = 1;
+    let amplitude = 1;
+    let maxValue = 0;
+
+    for (let i = 0; i < octaves; i++) {
+      total += this.noise2D(x * frequency, y * frequency) * amplitude;
+      maxValue += amplitude;
+      amplitude *= persistence;
+      frequency *= 2;
+    }
+
+    return total / maxValue;
+  }
+}
+
+// Create a singleton instance
+let noiseInstance = null;
+
+export const initNoise = (seed) => {
+  noiseInstance = new NoiseGenerator(seed);
+};
+
+export const noise2D = (x, y) => {
+  if (!noiseInstance) {
+    noiseInstance = new NoiseGenerator();
+  }
+  return noiseInstance.noise2D(x, y);
+};
+
+export const fractalNoise2D = (x, y, octaves, persistence) => {
+  if (!noiseInstance) {
+    noiseInstance = new NoiseGenerator();
+  }
+  return noiseInstance.fractalNoise2D(x, y, octaves, persistence);
+};
+
+
+
+
+
+
+
+===== FILE: SimpleApp.jsx =====
+// src/SimpleApp.jsx
+// Simple standalone version (no Hero page, direct to visualizer)
+
+import React, { useState, useEffect, useRef } from 'react';
+import { Play, Pause, SkipForward, SkipBack, Upload, X, ChevronDown, ChevronUp } from 'lucide-react';
+import AudioVisualizer from './visualizers/AudioVisualizer';
+import './visualizercss.css';
+
+const SimpleApp = () => {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [volume, setVolume] = useState(0.7);
+  const [currentTrack, setCurrentTrack] = useState(null);
+  const [playlist, setPlaylist] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [visualizerMode, setVisualizerMode] = useState('ball'); // 'ball' or 'canvas'
+
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const sourceRef = useRef(null);
+  const audioRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (audioContextRef.current) audioContextRef.current.close();
+    };
+  }, []);
+
+  useEffect(() => {
+    const updateTime = () => {
+      if (audioRef.current) {
+        setCurrentTime(audioRef.current.currentTime);
+        setDuration(audioRef.current.duration || 0);
+      }
+    };
+    const interval = setInterval(updateTime, 100);
+    return () => clearInterval(interval);
+  }, []);
+
+  const initAudio = () => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      analyserRef.current = audioContextRef.current.createAnalyser();
+      analyserRef.current.fftSize = 4096;
+      analyserRef.current.smoothingTimeConstant = 0.7;
+    }
+  };
+
+  const handleFileUpload = (e) => {
+    const files = Array.from(e.target.files);
+    const audioFiles = files.filter(file => file.type.startsWith('audio/'));
+
+    if (audioFiles.length === 0) return;
+
+    const newTracks = audioFiles.map(file => ({
+      name: file.name.replace(/\.[^/.]+$/, ''),
+      url: URL.createObjectURL(file),
+      file: file
+    }));
+
+    setPlaylist(prev => {
+      const updated = [...prev, ...newTracks];
+
+      if (prev.length === 0 && newTracks.length > 0) {
+        const firstIndex = 0;
+        const firstTrack = newTracks[0];
+        setCurrentTrack(firstTrack);
+        setCurrentIndex(firstIndex);
+      }
+
+      return updated;
+    });
+
+    if (e.target) {
+      e.target.value = '';
+    }
+  };
+
+  const playTrack = async (track, index) => {
+    initAudio();
+
+    if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+      try {
+        await audioContextRef.current.resume();
+      } catch (err) {
+        console.error('Failed to resume AudioContext:', err);
+      }
+    }
+
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = '';
+      if (sourceRef.current) {
+        try {
+          sourceRef.current.disconnect();
+        } catch (e) {}
+      }
+    }
+
+    audioRef.current = new Audio(track.url);
+    audioRef.current.volume = volume;
+
+    try {
+      if (sourceRef.current) {
+        sourceRef.current.disconnect();
+      }
+
+      sourceRef.current = audioContextRef.current.createMediaElementSource(audioRef.current);
+      sourceRef.current.connect(analyserRef.current);
+      analyserRef.current.connect(audioContextRef.current.destination);
+    } catch (err) {
+      console.error('Failed to connect audio source:', err);
+      initAudio();
+      sourceRef.current = audioContextRef.current.createMediaElementSource(audioRef.current);
+      sourceRef.current.connect(analyserRef.current);
+      analyserRef.current.connect(audioContextRef.current.destination);
+    }
+
+    audioRef.current.onended = () => {
+      skipToNext();
+    };
+
+    audioRef.current.onloadedmetadata = () => {
+      setDuration(audioRef.current.duration);
+    };
+
+    audioRef.current.onerror = (err) => {
+      console.error('Audio playback error:', err);
+      setIsPlaying(false);
+    };
+
+    try {
+      await audioRef.current.play();
+      setIsPlaying(true);
+      setCurrentTrack(track);
+      setCurrentIndex(index);
+    } catch (err) {
+      console.error('Playback failed:', err);
+      setIsPlaying(false);
+      if (err.name === 'NotAllowedError' || err.name === 'NotSupportedError') {
+        console.log('Autoplay blocked. User interaction required.');
+      }
+    }
+  };
+
+  const togglePlay = async () => {
+    if (!currentTrack && playlist.length > 0) {
+      playTrack(playlist[0], 0);
+      return;
+    }
+
+    if (!currentTrack) {
+      fileInputRef.current?.click();
+      return;
+    }
+
+    if (isPlaying) {
+      audioRef.current?.pause();
+      setIsPlaying(false);
+    } else {
+      if (audioContextRef.current?.state === 'suspended') {
+        try {
+          await audioContextRef.current.resume();
+        } catch (err) {
+          console.error('Failed to resume AudioContext:', err);
+        }
+      }
+
+      try {
+        await audioRef.current?.play();
+        setIsPlaying(true);
+      } catch (err) {
+        console.error('Playback failed:', err);
+        setIsPlaying(false);
+      }
+    }
+  };
+
+  const skipToNext = () => {
+    if (playlist.length === 0) return;
+
+    const nextIndex = (currentIndex + 1) % playlist.length;
+
+    if (currentIndex === playlist.length - 1) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      setIsPlaying(false);
+      setCurrentIndex(0);
+      setCurrentTrack(playlist[0]);
+      return;
+    }
+
+    playTrack(playlist[nextIndex], nextIndex);
+  };
+
+  const skipToPrevious = () => {
+    if (playlist.length === 0) return;
+
+    if (audioRef.current && audioRef.current.currentTime > 3) {
+      audioRef.current.currentTime = 0;
+      return;
+    }
+
+    const prevIndex = currentIndex === 0 ? playlist.length - 1 : currentIndex - 1;
+    playTrack(playlist[prevIndex], prevIndex);
+  };
+
+  const handleVolumeChange = (e) => {
+    const newVolume = parseFloat(e.target.value);
+    setVolume(newVolume);
+    if (audioRef.current) {
+      audioRef.current.volume = newVolume;
+    }
+  };
+
+  const handleSeek = (e) => {
+    const newTime = parseFloat(e.target.value);
+    if (audioRef.current && !isNaN(audioRef.current.duration)) {
+      audioRef.current.currentTime = newTime;
+      setCurrentTime(newTime);
+    }
+  };
+
+  const formatTime = (seconds) => {
+    if (isNaN(seconds)) return '0:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const removeTrack = (index) => {
+    const newPlaylist = playlist.filter((_, i) => i !== index);
+    setPlaylist(newPlaylist);
+
+    if (index === currentIndex) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      setIsPlaying(false);
+      setCurrentTrack(null);
+    } else if (index < currentIndex) {
+      setCurrentIndex(currentIndex - 1);
+    }
+  };
+
+  return (
+    <div className="app-container">
+      <AudioVisualizer
+        analyser={analyserRef.current}
+        isPlaying={isPlaying}
+        mode={visualizerMode}
+      />
+
+      <div className={`floating-controls ${!controlsVisible ? 'hidden' : ''}`}>
+        <button
+          className="toggle-controls"
+          onClick={() => setControlsVisible(!controlsVisible)}
+        >
+          {controlsVisible ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+        </button>
+
+        <div className="controls-content">
+          {/* Mode Toggle */}
+          <div className="mode-toggle">
+            <button
+              className={`mode-btn ${visualizerMode === 'ball' ? 'active' : ''}`}
+              onClick={() => setVisualizerMode('ball')}
+              title="Ball Mode"
+            >
+              Ball
+            </button>
+            <button
+              className={`mode-btn ${visualizerMode === 'canvas' ? 'active' : ''}`}
+              onClick={() => setVisualizerMode('canvas')}
+              title="Canvas Mode"
+            >
+              Canvas
+            </button>
+          </div>
+
+          {currentTrack && (
+            <div className="track-info-minimal">
+              <p className="track-name-minimal">{currentTrack.name}</p>
+              <div className="time-display">
+                <span>{formatTime(currentTime)}</span>
+                <span>{formatTime(duration)}</span>
+              </div>
+            </div>
+          )}
+
+          {currentTrack && (
+            <div className="timeline-container">
+              <input
+                type="range"
+                min="0"
+                max={duration || 0}
+                step="0.1"
+                value={currentTime}
+                onChange={handleSeek}
+                className="timeline-slider"
+              />
+            </div>
+          )}
+
+          <div className="mini-controls">
+            <button
+              onClick={skipToPrevious}
+              className="mini-btn"
+              title="Previous"
+              disabled={playlist.length === 0}
+            >
+              <SkipBack size={14} />
+            </button>
+
+            <button
+              onClick={togglePlay}
+              className="mini-btn primary"
+              title={isPlaying ? 'Pause' : 'Play'}
+            >
+              {isPlaying ? <Pause size={16} /> : <Play size={16} />}
+            </button>
+
+            <button
+              onClick={skipToNext}
+              className="mini-btn"
+              title="Next"
+              disabled={playlist.length === 0}
+            >
+              <SkipForward size={14} />
+            </button>
+
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="mini-btn"
+              title="Add"
+            >
+              <Upload size={14} />
+            </button>
+
+            <div className="mini-volume">
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                value={volume}
+                onChange={handleVolumeChange}
+                className="mini-slider"
+              />
+            </div>
+          </div>
+
+          {playlist.length > 0 && (
+            <div className="mini-playlist">
+              {playlist.map((track, index) => (
+                <div
+                  key={index}
+                  className={`mini-playlist-item ${index === currentIndex ? 'active' : ''}`}
+                  onClick={() => playTrack(track, index)}
+                >
+                  <span className="mini-track-name">{track.name}</span>
+                  <button
+                    className="mini-remove"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeTrack(index);
+                    }}
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {playlist.length === 0 && (
+            <div className="mini-empty">
+              <p onClick={() => fileInputRef.current?.click()}>Add music</p>
+            </div>
+          )}
+        </div>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="audio/*"
+          multiple
+          onChange={handleFileUpload}
+          style={{ display: 'none' }}
+        />
+      </div>
+
+      {/* Integration Coming Soon Banner */}
+      {!isPlaying && (
+        <div className="integration-banner">
+          <p>Spotify + Apple Music integration coming soon</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default SimpleApp;
+
+===== FILE: main.jsx =====
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App.jsx';
+import './visualizercss.css';
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+
+
+
+===== FILE: main-simple.jsx =====
+// Entry point for the simple standalone version
+// Use this to run the pre-website version for experimentation
+// To use: Change main.jsx to import SimpleApp instead of App
+
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App.jsx';
+import './visualizercss.css';
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+
+
+
+===== FILE:Hero.jsx =====
+
+import React, { useEffect, useRef, useState } from 'react';
+import { generateUniquePalette, hslToString, getColorFromPalette, interpolatePalettes } from '../utils/colorUtils';
+import { initNoise, fractalNoise2D } from '../utils/noise';
+import './Hero.css';
+
+const Hero = ({ onLaunch }) => {
+  const canvasRef = useRef(null);
+  const transitionCanvasRef = useRef(null);
+  const animationRef = useRef(null);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+
+  const colorStateRef = useRef({
+    currentPalette: null,
+    nextPalette: null,
+    transitionProgress: 1,
+    initialized: false,
+    lastChangeTime: 0
+  });
+
+  const energyFieldRef = useRef({
+    centerX: 0,
+    centerY: 0,
+    maxRadius: 0,
+    points: [],
+    velocities: [],
+    energy: 0.2,
+    flowAngle: 0
+  });
+
+  const timeRef = useRef(0);
+  const idleTimeRef = useRef(0);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const resizeCanvas = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+
+      const field = energyFieldRef.current;
+      field.centerX = canvas.width / 2;
+      field.centerY = canvas.height / 2;
+      field.maxRadius = Math.min(canvas.width, canvas.height) * 0.45;
+
+      initializeEnergyField();
+    };
+
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    return () => {
+      window.removeEventListener('resize', resizeCanvas);
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, []);
+
+  const initializeEnergyField = () => {
+    initNoise(Date.now() + Math.random() * 10000);
+
+    const field = energyFieldRef.current;
+    const numPoints = 120;
+
+    field.points = [];
+    field.velocities = [];
+
+    for (let i = 0; i < numPoints; i++) {
+      const angle = (i / numPoints) * Math.PI * 2;
+      field.points.push({
+        angle: angle,
+        radius: field.maxRadius * 0.6,
+        targetRadius: field.maxRadius * 0.6,
+        noiseOffset: Math.random() * 1000,
+        localEnergy: 0,
+        flowInfluence: Math.random()
+      });
+      field.velocities.push({ radial: 0, angular: 0 });
+    }
+  };
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const colorState = colorStateRef.current;
+    const field = energyFieldRef.current;
+
+    if (!colorState.initialized) {
+      try {
+        colorState.currentPalette = generateUniquePalette({
+          bassAvg: 0.3,
+          midAvg: 0.3,
+          highAvg: 0.3,
+          spectralCentroid: 0.5,
+          harmonicRichness: 0.3
+        });
+        colorState.transitionProgress = 1;
+        colorState.lastChangeTime = timeRef.current;
+        colorState.initialized = true;
+      } catch (err) {
+        colorState.currentPalette = {
+          colors: [{ h: 200, s: 70, l: 60 }],
+          baseHue: 200,
+          type: 'fallback'
+        };
+        colorState.initialized = true;
+      }
+    }
+
+    const animate = () => {
+      animationRef.current = requestAnimationFrame(animate);
+
+      timeRef.current += 0.016;
+      idleTimeRef.current += 0.016;
+
+      const timeSinceLastChange = timeRef.current - colorState.lastChangeTime;
+      const shouldChangePalette = timeSinceLastChange > 15 + Math.random() * 10;
+
+      if (shouldChangePalette && colorState.transitionProgress >= 1) {
+        try {
+          colorState.nextPalette = generateUniquePalette({
+            bassAvg: 0.3 + Math.sin(idleTimeRef.current * 0.1) * 0.1,
+            midAvg: 0.3 + Math.cos(idleTimeRef.current * 0.15) * 0.1,
+            highAvg: 0.3 + Math.sin(idleTimeRef.current * 0.12) * 0.1,
+            spectralCentroid: 0.5,
+            harmonicRichness: 0.3
+          });
+          colorState.transitionProgress = 0;
+          colorState.lastChangeTime = timeRef.current;
+        } catch (err) {
+          console.error('Palette generation error:', err);
+        }
+      }
+
+      if (colorState.transitionProgress < 1 && colorState.nextPalette) {
+        colorState.transitionProgress += 0.002;
+        if (colorState.transitionProgress >= 1) {
+          colorState.currentPalette = colorState.nextPalette;
+          colorState.nextPalette = null;
+        }
+      }
+
+      const activePalette = colorState.transitionProgress < 1 && colorState.nextPalette
+        ? interpolatePalettes(colorState.currentPalette, colorState.nextPalette, colorState.transitionProgress)
+        : colorState.currentPalette;
+
+      field.flowAngle += 0.002;
+
+      const bgGradient = ctx.createRadialGradient(
+        field.centerX, field.centerY, 0,
+        field.centerX, field.centerY, field.maxRadius * 1.5
+      );
+      const bgColor1 = getColorFromPalette(activePalette, 0.05, 0.1);
+      const bgColor2 = getColorFromPalette(activePalette, 0.15, 0.1);
+      bgGradient.addColorStop(0, hslToString({ h: bgColor1.h, s: bgColor1.s, l: Math.max(3, bgColor1.l - 45) }, 1));
+      bgGradient.addColorStop(0.7, hslToString({ h: bgColor2.h, s: bgColor2.s, l: Math.max(3, bgColor2.l - 48) }, 1));
+      bgGradient.addColorStop(1, hslToString({ h: bgColor2.h, s: bgColor2.s, l: Math.max(2, bgColor2.l - 52) }, 1));
+      ctx.fillStyle = bgGradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      field.points.forEach((point, i) => {
+        const driftNoise = fractalNoise2D(
+          Math.cos(point.angle) * 0.3 + idleTimeRef.current * 0.03,
+          Math.sin(point.angle) * 0.3 + idleTimeRef.current * 0.03,
+          3,
+          0.5
+        );
+
+        const baseRadius = field.maxRadius * 0.6;
+        const driftAmount = driftNoise * 0.12;
+        point.targetRadius = baseRadius * (1 + driftAmount);
+        point.localEnergy = 0.08;
+
+        const diff = point.targetRadius - point.radius;
+        field.velocities[i].radial += diff * 0.025;
+        field.velocities[i].radial *= 0.92;
+
+        point.radius += field.velocities[i].radial;
+        point.radius = Math.min(point.radius, field.maxRadius);
+
+        point.angle += 0.0001;
+      });
+
+      ctx.save();
+      ctx.translate(field.centerX, field.centerY);
+
+      for (let layer = 0; layer < 3; layer++) {
+        const layerScale = 1 + layer * 0.4;
+        const layerAlpha = (1 - layer * 0.3) * 0.15;
+
+        ctx.beginPath();
+        field.points.forEach((point, i) => {
+          const x = Math.cos(point.angle + field.flowAngle) * point.radius * layerScale;
+          const y = Math.sin(point.angle + field.flowAngle) * point.radius * layerScale;
+
+          if (i === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            const prevPoint = field.points[i - 1];
+            const prevX = Math.cos(prevPoint.angle + field.flowAngle) * prevPoint.radius * layerScale;
+            const prevY = Math.sin(prevPoint.angle + field.flowAngle) * prevPoint.radius * layerScale;
+            const cpX = (prevX + x) / 2;
+            const cpY = (prevY + y) / 2;
+            ctx.quadraticCurveTo(prevX, prevY, cpX, cpY);
+          }
+        });
+        ctx.closePath();
+
+        const avgRadius = field.points.reduce((sum, p) => sum + p.radius, 0) / field.points.length;
+        const layerGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, avgRadius * layerScale);
+
+        const colorPos = 0.3 + layer * 0.2;
+        const layerColor = getColorFromPalette(activePalette, colorPos, 0.2);
+
+        layerGradient.addColorStop(0, hslToString(layerColor, layerAlpha * 0.6));
+        layerGradient.addColorStop(0.5, hslToString(layerColor, layerAlpha * 0.4));
+        layerGradient.addColorStop(1, hslToString(layerColor, layerAlpha * 0.05));
+
+        ctx.globalCompositeOperation = 'screen';
+        ctx.fillStyle = layerGradient;
+        ctx.fill();
+      }
+
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.restore();
+    };
+
+    animate();
+
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, []);
+
+  const handleLaunch = () => {
+    setIsTransitioning(true);
+    animateTransition();
+    setTimeout(() => {
+      onLaunch();
+    }, 1000);
+  };
+
+  const animateTransition = () => {
+    const transitionCanvas = transitionCanvasRef.current;
+    if (!transitionCanvas) return;
+
+    const ctx = transitionCanvas.getContext('2d');
+    transitionCanvas.width = window.innerWidth;
+    transitionCanvas.height = window.innerHeight;
+
+    let progress = 0;
+    const duration = 1000; // 1 second
+    const startTime = Date.now();
+
+    const animate = () => {
+      const elapsed = Date.now() - startTime;
+      progress = Math.min(elapsed / duration, 1);
+
+      ctx.clearRect(0, 0, transitionCanvas.width, transitionCanvas.height);
+
+      // Motion streaks
+      const numStreaks = 30;
+      const centerX = transitionCanvas.width / 2;
+      const centerY = transitionCanvas.height / 2;
+
+      for (let i = 0; i < numStreaks; i++) {
+        const angle = (i / numStreaks) * Math.PI * 2;
+        const length = progress * Math.max(transitionCanvas.width, transitionCanvas.height) * 1.5;
+        const blur = 20 + progress * 40;
+
+        ctx.save();
+        ctx.translate(centerX, centerY);
+        ctx.rotate(angle);
+
+        const gradient = ctx.createLinearGradient(0, 0, length, 0);
+        gradient.addColorStop(0, `hsla(${200 + i * 12}, 80%, 70%, 0)`);
+        gradient.addColorStop(0.3, `hsla(${200 + i * 12}, 80%, 70%, ${0.6 * (1 - progress)})`);
+        gradient.addColorStop(1, `hsla(${200 + i * 12}, 80%, 70%, 0)`);
+
+        ctx.filter = `blur(${blur}px)`;
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, -10, length, 20);
+
+        ctx.restore();
+      }
+
+      // Full screen blur overlay
+      ctx.filter = `blur(${progress * 80}px)`;
+      ctx.fillStyle = `rgba(255, 255, 255, ${progress * 0.8})`;
+      ctx.fillRect(0, 0, transitionCanvas.width, transitionCanvas.height);
+
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      }
+    };
+
+    animate();
+  };
+
+  return (
+    <div className="hero-container">
+      <canvas ref={canvasRef} className="hero-canvas" />
+      {isTransitioning && (
+        <canvas ref={transitionCanvasRef} className="transition-canvas" />
+      )}
+      <div className="hero-overlay" />
+      <div className={`hero-content ${isTransitioning ? 'fade-out' : ''}`}>
+        <h1 className="hero-title">Experience the Spectrum of Sound.</h1>
+        <button className="hero-cta spectral-glow" onClick={handleLaunch}>
+          Launch Visualizer
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export default Hero;
+
+
+
+
+===== FILE:visualizercss.css =====
+
+/* ==================== BASE STYLES ==================== */
+.app-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #000;
+}
+
+.visualizer-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* ==================== HERO TRANSITION ==================== */
+.transition-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.hero-content.fade-out {
+  animation: fadeOutContent 0.6s ease-out forwards;
+}
+
+@keyframes fadeOutContent {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+/* ==================== INTEGRATION BANNER ==================== */
+.integration-banner {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  padding: 12px 24px;
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  animation: fadeInBanner 0.6s ease-out;
+  pointer-events: none;
+}
+
+.integration-banner p {
+  margin: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.65);
+  text-align: center;
+}
+
+@keyframes fadeInBanner {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* ==================== FLOATING CONTROLS ==================== */
+.floating-controls {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 50;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  padding: 16px;
+  min-width: 320px;
+  max-width: 400px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.floating-controls.hidden {
+  transform: translateY(calc(100% - 48px));
+}
+
+.toggle-controls {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  width: 40px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.toggle-controls:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.controls-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ==================== MODE TOGGLE ==================== */
+.mode-toggle {
+  display: flex;
+  gap: 8px;
+  padding: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+}
+
+.mode-btn {
+  flex: 1;
+  padding: 8px 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mode-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.mode-btn.active {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+/* ==================== TRACK INFO ==================== */
+.track-info-minimal {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.track-name-minimal {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.time-display {
+  display: flex;
+  justify-content: space-between;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 11px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* ==================== TIMELINE ==================== */
+.timeline-container {
+  width: 100%;
+}
+
+.timeline-slider {
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.timeline-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.timeline-slider::-webkit-slider-thumb:hover {
+  background: rgba(255, 255, 255, 1);
+  transform: scale(1.2);
+}
+
+.timeline-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.timeline-slider::-moz-range-thumb:hover {
+  background: rgba(255, 255, 255, 1);
+  transform: scale(1.2);
+}
+
+/* ==================== MINI CONTROLS ==================== */
+.mini-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mini-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.7);
+  transition: all 0.2s ease;
+}
+
+.mini-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.mini-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.mini-btn.primary {
+  width: 44px;
+  height: 44px;
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.mini-btn.primary:hover {
+  background: rgba(255, 255, 255, 0.22);
+  transform: scale(1.05);
+}
+
+.mini-volume {
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.mini-slider {
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.mini-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mini-slider::-webkit-slider-thumb:hover {
+  background: rgba(255, 255, 255, 1);
+  transform: scale(1.2);
+}
+
+.mini-slider::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.8);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mini-slider::-moz-range-thumb:hover {
+  background: rgba(255, 255, 255, 1);
+  transform: scale(1.2);
+}
+
+/* ==================== PLAYLIST ==================== */
+.mini-playlist {
+  max-height: 200px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+}
+
+.mini-playlist::-webkit-scrollbar {
+  width: 6px;
+}
+
+.mini-playlist::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mini-playlist::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.mini-playlist::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.mini-playlist-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mini-playlist-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.mini-playlist-item.active {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.mini-track-name {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.8);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-right: 8px;
+}
+
+.mini-playlist-item.active .mini-track-name {
+  color: rgba(255, 255, 255, 0.95);
+  font-weight: 500;
+}
+
+.mini-remove {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.mini-remove:hover {
+  background: rgba(255, 0, 0, 0.15);
+  color: rgba(255, 100, 100, 0.9);
+}
+
+.mini-empty {
+  padding: 24px;
+  text-align: center;
+}
+
+.mini-empty p {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.4);
+  margin: 0;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.mini-empty p:hover {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* ==================== RESPONSIVE ==================== */
+@media (max-width: 768px) {
+  .floating-controls {
+    bottom: 16px;
+    right: 16px;
+    left: 16px;
+    min-width: unset;
+    max-width: unset;
+  }
+
+  .integration-banner {
+    bottom: 16px;
+    left: 16px;
+    right: 16px;
+    transform: none;
+  }
+
+  .integration-banner p {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .mini-controls {
+    flex-wrap: wrap;
+  }
+
+  .mini-volume {
+    width: 100%;
+    order: 5;
+  }
+}
+
+
+
+
+
+===== FILE:index.css =====
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&display=swap');
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: dark;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #0a0a0a;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  place-items: center;
+  min-width: 320px;
+  min-height: 100vh;
+  overflow: hidden;
+  background: #0a0a0a;
+  position: relative;
+}
+
+/* Chromatic noise texture background */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background:
+    radial-gradient(circle at 20% 50%, rgba(100, 50, 200, 0.02) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(200, 50, 100, 0.02) 0%, transparent 50%),
+    radial-gradient(circle at 40% 20%, rgba(50, 100, 200, 0.02) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.6;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+  z-index: 1;
+}
+
+.app {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.fade-out {
+  animation: fadeOut 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.05);
+  }
+}
+
+/* Spectral glow utility class */
+.spectral-glow {
+  transition: box-shadow 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.spectral-glow:hover {
+  box-shadow:
+    0 0 20px rgba(255, 255, 255, 0.15),
+    0 0 40px rgba(150, 100, 255, 0.12),
+    0 0 60px rgba(255, 100, 150, 0.08);
+}
+
+/* Smooth transitions */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Remove default button styles */
+button {
+  border: none;
+  outline: none;
+  background: none;
+  font-family: inherit;
+}
+
+/* Smooth scroll disabled */
+html {
+  overflow: hidden;
+  height: 100%;
+}
+
+body {
+  overflow: hidden;
+  height: 100%;
+}
+
+
+
+
+
+
+===== FILE:index.css =====
+
+
+
+
+
+
+===== FILE:FloatingControls.jsx =====
+
+
+
+import React from 'react';
+import { Play, Pause, SkipForward, SkipBack, Upload, X, ChevronDown, ChevronUp } from 'lucide-react';
+import '../visualizercss.css';
+
+const FloatingControls = ({
+  isPlaying,
+  currentTrack,
+  currentTime,
+  duration,
+  volume,
+  playlist,
+  currentIndex,
+  controlsVisible,
+  visualizerMode,
+  onToggleControls,
+  onTogglePlay,
+  onSkipNext,
+  onSkipPrevious,
+  onVolumeChange,
+  onSeek,
+  onFileUpload,
+  onPlayTrack,
+  onRemoveTrack,
+  onModeChange,
+  fileInputRef,
+  formatTime
+}) => {
+  return (
+    <div className={`floating-controls ${!controlsVisible ? 'hidden' : ''}`}>
+      <button className="toggle-controls" onClick={onToggleControls}>
+        {controlsVisible ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+      </button>
+
+      <div className="controls-content">
+        {/* Mode Toggle */}
+        <div className="mode-toggle">
+          <button
+            className={`mode-btn ${visualizerMode === 'canvas' ? 'active' : ''}`}
+            onClick={() => onModeChange('canvas')}
+            title="Canvas Mode"
+          >
+            Canvas
+          </button>
+          <button
+            className={`mode-btn ${visualizerMode === 'ball' ? 'active' : ''}`}
+            onClick={() => onModeChange('ball')}
+            title="Ball Mode"
+          >
+            Ball
+          </button>
+        </div>
+
+        {currentTrack && (
+          <div className="track-info-minimal">
+            <p className="track-name-minimal">{currentTrack.name}</p>
+            <div className="time-display">
+              <span>{formatTime(currentTime)}</span>
+              <span>{formatTime(duration)}</span>
+            </div>
+          </div>
+        )}
+
+        {currentTrack && (
+          <div className="timeline-container">
+            <input
+              type="range"
+              min="0"
+              max={duration || 0}
+              step="0.1"
+              value={currentTime}
+              onChange={onSeek}
+              className="timeline-slider"
+            />
+          </div>
+        )}
+
+        <div className="mini-controls">
+          <button
+            onClick={onSkipPrevious}
+            className="mini-btn"
+            title="Previous"
+            disabled={playlist.length === 0}
+          >
+            <SkipBack size={14} />
+          </button>
+
+          <button
+            onClick={onTogglePlay}
+            className="mini-btn primary"
+            title={isPlaying ? 'Pause' : 'Play'}
+          >
+            {isPlaying ? <Pause size={16} /> : <Play size={16} />}
+          </button>
+
+          <button
+            onClick={onSkipNext}
+            className="mini-btn"
+            title="Next"
+            disabled={playlist.length === 0}
+          >
+            <SkipForward size={14} />
+          </button>
+
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="mini-btn"
+            title="Add"
+          >
+            <Upload size={14} />
+          </button>
+
+          <div className="mini-volume">
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={volume}
+              onChange={onVolumeChange}
+              className="mini-slider"
+            />
+          </div>
+        </div>
+
+        {playlist.length > 0 && (
+          <div className="mini-playlist">
+            {playlist.map((track, index) => (
+              <div
+                key={index}
+                className={`mini-playlist-item ${index === currentIndex ? 'active' : ''}`}
+                onClick={() => onPlayTrack(track, index)}
+              >
+                <span className="mini-track-name">{track.name}</span>
+                <button
+                  className="mini-remove"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemoveTrack(index);
+                  }}
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {playlist.length === 0 && (
+          <div className="mini-empty">
+            <p onClick={() => fileInputRef.current?.click()}>Add music</p>
+          </div>
+        )}
+      </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="audio/*"
+        multiple
+        onChange={onFileUpload}
+        style={{ display: 'none' }}
+      />
+    </div>
+  );
+};
+
+export default FloatingControls;
+
+
+
+
+===== FILE:Footer.css =====
+
+.spectral-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  padding: 16px 24px;
+  z-index: 50;
+  pointer-events: none;
+}
+
+.footer-content {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.footer-text {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 11px;
+  font-weight: 300;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  .spectral-footer {
+    padding: 12px 16px;
+  }
+
+  .footer-text {
+    font-size: 10px;
+  }
+}
+
+
+
+
+
+===== FILE:Footer.jsx =====
+
+import React from 'react';
+import './Footer.css';
+
+const Footer = () => {
+  return (
+    <footer className="spectral-footer">
+      <div className="footer-content">
+        <p className="footer-text">
+          Spectral Sounds — Experimental Visual Audio Engine
+        </p>
+      </div>
+    </footer>
+  );
+};
+
+export default Footer;
+
+
+
+===== FILE:Hero.css =====
+
+.hero-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.hero-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+.hero-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  background: radial-gradient(
+    circle at center,
+    transparent 0%,
+    rgba(0, 0, 0, 0.3) 70%,
+    rgba(0, 0, 0, 0.5) 100%
+  );
+  pointer-events: none;
+}
+
+.hero-content {
+  position: relative;
+  z-index: 10;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2.5rem;
+  opacity: 1;
+  transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1), transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: fadeInUp 1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hero-title {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  font-weight: 300;
+  letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.95);
+  margin: 0;
+  text-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
+  line-height: 1.2;
+}
+
+.hero-cta {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 0.875rem;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 1rem 2.5rem;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px);
+  border: 0.5px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.95);
+  cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-cta::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+  transition: left 0.6s ease;
+}
+
+.hero-cta:hover::before {
+  left: 100%;
+}
+
+.hero-cta:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-2px);
+  box-shadow:
+    0 0 20px rgba(255, 255, 255, 0.15),
+    0 0 40px rgba(150, 100, 255, 0.1),
+    0 0 60px rgba(255, 100, 150, 0.05);
+}
+
+.hero-cta:active {
+  transform: translateY(0);
+}
+
+.hero-container.fade-out .hero-content {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+@media (max-width: 768px) {
+  .hero-title {
+    font-size: clamp(1.5rem, 8vw, 2.5rem);
+    padding: 0 1rem;
+  }
+
+  .hero-cta {
+    padding: 0.875rem 2rem;
+    font-size: 0.75rem;
+  }
+}
+
+
+
+
+
+
+===== FILE:Hero.jsx =====
+
+
+.hero-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.hero-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+.hero-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  background: radial-gradient(
+    circle at center,
+    transparent 0%,
+    rgba(0, 0, 0, 0.3) 70%,
+    rgba(0, 0, 0, 0.5) 100%
+  );
+  pointer-events: none;
+}
+
+.hero-content {
+  position: relative;
+  z-index: 10;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2.5rem;
+  opacity: 1;
+  transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1), transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: fadeInUp 1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hero-title {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  font-weight: 300;
+  letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.95);
+  margin: 0;
+  text-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
+  line-height: 1.2;
+}
+
+.hero-cta {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 0.875rem;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 1rem 2.5rem;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px);
+  border: 0.5px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.95);
+  cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-cta::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+  transition: left 0.6s ease;
+}
+
+.hero-cta:hover::before {
+  left: 100%;
+}
+
+.hero-cta:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-2px);
+  box-shadow:
+    0 0 20px rgba(255, 255, 255, 0.15),
+    0 0 40px rgba(150, 100, 255, 0.1),
+    0 0 60px rgba(255, 100, 150, 0.05);
+}
+
+.hero-cta:active {
+  transform: translateY(0);
+}
+
+.hero-container.fade-out .hero-content {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+@media (max-width: 768px) {
+  .hero-title {
+    font-size: clamp(1.5rem, 8vw, 2.5rem);
+    padding: 0 1rem;
+  }
+
+  .hero-cta {
+    padding: 0.875rem 2rem;
+    font-size: 0.75rem;
+  }
+}
+
+
+
+
+
+
+===== FILE:VisualizerWrapper.css =====
+
+.visualizer-wrapper {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  opacity: 1;
+  transform: scale(1);
+  transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1), transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.visualizer-wrapper.fade-in {
+  animation: fadeInScale 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(1.05);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+
+
+
+===== FILE:VisualizerWrapper.jsx =====
+
+
+
+import React, { useState, useEffect, useRef } from 'react';
+import { Play, Pause, SkipForward, SkipBack, Upload, X, ChevronDown, ChevronUp } from 'lucide-react';
+import AudioVisualizer from '../visualizers/AudioVisualizer';
+import FloatingControls from './FloatingControls';
+import Footer from './Footer';
+import './VisualizerWrapper.css';
+
+const VisualizerWrapper = () => {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [volume, setVolume] = useState(0.7);
+  const [currentTrack, setCurrentTrack] = useState(null);
+  const [playlist, setPlaylist] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [visualizerMode, setVisualizerMode] = useState('canvas'); // 'canvas' or 'ball'
+
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const sourceRef = useRef(null);
+  const audioRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (audioContextRef.current) audioContextRef.current.close();
+    };
+  }, []);
+
+  useEffect(() => {
+    const updateTime = () => {
+      if (audioRef.current) {
+        setCurrentTime(audioRef.current.currentTime);
+        setDuration(audioRef.current.duration || 0);
+      }
+    };
+    const interval = setInterval(updateTime, 100);
+    return () => clearInterval(interval);
+  }, []);
+
+  const initAudio = () => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      analyserRef.current = audioContextRef.current.createAnalyser();
+      analyserRef.current.fftSize = 4096;
+      analyserRef.current.smoothingTimeConstant = 0.7;
+    }
+  };
+
+  const handleFileUpload = (e) => {
+    const files = Array.from(e.target.files);
+    const audioFiles = files.filter(file => file.type.startsWith('audio/'));
+
+    if (audioFiles.length === 0) return;
+
+    const newTracks = audioFiles.map(file => ({
+      name: file.name.replace(/\.[^/.]+$/, ''),
+      url: URL.createObjectURL(file),
+      file: file
+    }));
+
+    setPlaylist(prev => {
+      const updated = [...prev, ...newTracks];
+
+      // If no current track, set the first new track (but don't auto-play)
+      if (prev.length === 0 && newTracks.length > 0) {
+        const firstIndex = 0;
+        const firstTrack = newTracks[0];
+        setCurrentTrack(firstTrack);
+        setCurrentIndex(firstIndex);
+      }
+
+      return updated;
+    });
+
+    // Reset file input
+    if (e.target) {
+      e.target.value = '';
+    }
+  };
+
+  const playTrack = async (track, index) => {
+    initAudio();
+
+    // Resume AudioContext if suspended (required for browser autoplay policies)
+    if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+      try {
+        await audioContextRef.current.resume();
+      } catch (err) {
+        console.error('Failed to resume AudioContext:', err);
+      }
+    }
+
+    // Clean up previous audio if exists
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = '';
+      if (sourceRef.current) {
+        try {
+          sourceRef.current.disconnect();
+        } catch (e) {
+          // Ignore disconnect errors
+        }
+      }
+    }
+
+    // Create new audio element
+    audioRef.current = new Audio(track.url);
+    audioRef.current.volume = volume;
+
+    // Set up audio context connection
+    try {
+      if (sourceRef.current) {
+        sourceRef.current.disconnect();
+      }
+
+      sourceRef.current = audioContextRef.current.createMediaElementSource(audioRef.current);
+      sourceRef.current.connect(analyserRef.current);
+      analyserRef.current.connect(audioContextRef.current.destination);
+    } catch (err) {
+      console.error('Failed to connect audio source:', err);
+      // Try to reinitialize if connection failed
+      initAudio();
+      sourceRef.current = audioContextRef.current.createMediaElementSource(audioRef.current);
+      sourceRef.current.connect(analyserRef.current);
+      analyserRef.current.connect(audioContextRef.current.destination);
+    }
+
+    // Set up event handlers
+    audioRef.current.onended = () => {
+      skipToNext();
+    };
+
+    audioRef.current.onloadedmetadata = () => {
+      setDuration(audioRef.current.duration);
+    };
+
+    audioRef.current.onerror = (err) => {
+      console.error('Audio playback error:', err);
+      setIsPlaying(false);
+    };
+
+    try {
+      await audioRef.current.play();
+      setIsPlaying(true);
+      setCurrentTrack(track);
+      setCurrentIndex(index);
+    } catch (err) {
+      console.error('Playback failed:', err);
+      setIsPlaying(false);
+      // If autoplay is blocked, user needs to click play button
+      if (err.name === 'NotAllowedError' || err.name === 'NotSupportedError') {
+        console.log('Autoplay blocked. User interaction required.');
+      }
+    }
+  };
+
+  const togglePlay = async () => {
+    if (!currentTrack && playlist.length > 0) {
+      playTrack(playlist[0], 0);
+      return;
+    }
+
+    if (!currentTrack) {
+      fileInputRef.current?.click();
+      return;
+    }
+
+    if (isPlaying) {
+      audioRef.current?.pause();
+      setIsPlaying(false);
+    } else {
+      // Resume AudioContext if suspended
+      if (audioContextRef.current?.state === 'suspended') {
+        try {
+          await audioContextRef.current.resume();
+        } catch (err) {
+          console.error('Failed to resume AudioContext:', err);
+        }
+      }
+
+      try {
+        await audioRef.current?.play();
+        setIsPlaying(true);
+      } catch (err) {
+        console.error('Playback failed:', err);
+        setIsPlaying(false);
+      }
+    }
+  };
+
+  const skipToNext = () => {
+    if (playlist.length === 0) return;
+
+    const nextIndex = (currentIndex + 1) % playlist.length;
+
+    if (currentIndex === playlist.length - 1) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      setIsPlaying(false);
+      setCurrentIndex(0);
+      setCurrentTrack(playlist[0]);
+      return;
+    }
+
+    playTrack(playlist[nextIndex], nextIndex);
+  };
+
+  const skipToPrevious = () => {
+    if (playlist.length === 0) return;
+
+    if (audioRef.current && audioRef.current.currentTime > 3) {
+      audioRef.current.currentTime = 0;
+      return;
+    }
+
+    const prevIndex = currentIndex === 0 ? playlist.length - 1 : currentIndex - 1;
+    playTrack(playlist[prevIndex], prevIndex);
+  };
+
+  const handleVolumeChange = (e) => {
+    const newVolume = parseFloat(e.target.value);
+    setVolume(newVolume);
+    if (audioRef.current) {
+      audioRef.current.volume = newVolume;
+    }
+  };
+
+  const handleSeek = (e) => {
+    const newTime = parseFloat(e.target.value);
+    if (audioRef.current && !isNaN(audioRef.current.duration)) {
+      audioRef.current.currentTime = newTime;
+      setCurrentTime(newTime);
+    }
+  };
+
+  const formatTime = (seconds) => {
+    if (isNaN(seconds)) return '0:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const removeTrack = (index) => {
+    const newPlaylist = playlist.filter((_, i) => i !== index);
+    setPlaylist(newPlaylist);
+
+    if (index === currentIndex) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      setIsPlaying(false);
+      setCurrentTrack(null);
+    } else if (index < currentIndex) {
+      setCurrentIndex(currentIndex - 1);
+    }
+  };
+
+  return (
+    <div className="visualizer-wrapper fade-in">
+      <AudioVisualizer
+        analyser={analyserRef.current}
+        isPlaying={isPlaying}
+        mode={visualizerMode}
+      />
+      <FloatingControls
+        isPlaying={isPlaying}
+        currentTrack={currentTrack}
+        currentTime={currentTime}
+        duration={duration}
+        volume={volume}
+        playlist={playlist}
+        currentIndex={currentIndex}
+        controlsVisible={controlsVisible}
+        visualizerMode={visualizerMode}
+        onToggleControls={() => setControlsVisible(!controlsVisible)}
+        onTogglePlay={togglePlay}
+        onSkipNext={skipToNext}
+        onSkipPrevious={skipToPrevious}
+        onVolumeChange={handleVolumeChange}
+        onSeek={handleSeek}
+        onFileUpload={handleFileUpload}
+        onPlayTrack={playTrack}
+        onRemoveTrack={removeTrack}
+        onModeChange={setVisualizerMode}
+        fileInputRef={fileInputRef}
+        formatTime={formatTime}
+      />
+      <Footer />
+    </div>
+  );
+};
+
+export default VisualizerWrapper;
+
+
+
+
+===== FILE:AudioVisualizer.jsx =====
+
+import React, { useEffect, useRef } from 'react';
+import { generateUniquePalette, hslToString, bassToDeepColor, trebleToLightColor, getColorFromPalette, toLuminous, toRadiantGlow, interpolatePalettes, getTimeOfDay } from './utils/colorUtils';
+import { initNoise, fractalNoise2D } from './utils/noise';
+
+import AudioVisualizerBall from './AudioVisualizer-Ball';
+import AudioVisualizerCanvas from './AudioVisualizer-Canvas';
+
+const AudioVisualizer = ({ analyser, isPlaying, mode = 'ball' }) => {
+  if (mode === 'canvas') {
+    return <AudioVisualizerCanvas analyser={analyser} isPlaying={isPlaying} />;
+  }
+
+  return <AudioVisualizerBall analyser={analyser} isPlaying={isPlaying} />;
+};
+
+
+const AudioVisualizerBall = ({ analyser, isPlaying }) => {
+  const canvasRef = useRef(null);
+  const animationRef = useRef(null);
+
+  const musicAnalysisRef = useRef({
+    pitch: { current: 0, prev: 0, change: 0, velocity: 0 },
+    rhythm: { beat: false, tempo: 120, consistency: 0.5, syncopation: 0 },
+    harmony: { complexity: 0, richness: 0, consonance: 0.5 },
+    melody: { direction: 0, contour: [], smoothness: 0.5 },
+    dynamics: { current: 0, range: 0, peak: 0, rms: 0 },
+    timbre: { brightness: 0.5, roughness: 0, warmth: 0.5 },
+    texture: { density: 0, layering: 0, clarity: 0.5 },
+    form: { section: 0, transition: false, energy: 0 }
+  });
+
+  const colorStateRef = useRef({
+    currentPalette: null,
+    nextPalette: null,
+    transitionProgress: 1,
+    initialized: false,
+    lastChangeTime: 0,
+    lastTimeOfDay: null
+  });
+
+  const energyBallRef = useRef({
+    x: 0,
+    y: 0,
+    baseRadius: 150,
+    maxRadius: 0, // Will be set based on screen size
+    radius: 150,
+    points: [],
+    velocities: [],
+    energy: 0,
+    pulsePhase: 0,
+    shapeMode: 0,
+    targetShapeMode: 0,
+    shapeMorphProgress: 0,
+    shapeTransitionSpeed: 0.02,
+    organicFactor: 0.5,
+    sentientBoundary: 0.6
+  });
+
+  const timeRef = useRef(0);
+  const beatHistoryRef = useRef([]);
+  const shapeTransitionTimerRef = useRef(0);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const resizeCanvas = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      energyBallRef.current.x = canvas.width / 2;
+      energyBallRef.current.y = canvas.height / 2;
+
+      // Set max radius to fit screen (25% of smallest dimension, with max limit)
+      const minDimension = Math.min(canvas.width, canvas.height);
+      energyBallRef.current.maxRadius = Math.min(minDimension * 0.35, 400);
+      energyBallRef.current.baseRadius = energyBallRef.current.maxRadius * 0.7;
+
+      initializeEnergyBall();
+    };
+
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    return () => {
+      window.removeEventListener('resize', resizeCanvas);
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, []);
+
+  const initializeEnergyBall = () => {
+    initNoise(Date.now() + Math.random() * 10000);
+    const ball = energyBallRef.current;
+    const numPoints = 144;
+
+    ball.points = [];
+    ball.velocities = [];
+
+    for (let i = 0; i < numPoints; i++) {
+      const angle = (i / numPoints) * Math.PI * 2;
+      ball.points.push({
+        angle: angle,
+        radius: ball.baseRadius,
+        targetRadius: ball.baseRadius,
+        noiseOffset: Math.random() * 1000,
+        shapeInfluence: Math.random(),
+        localEnergy: 0
+      });
+      ball.velocities.push({ radial: 0, angular: 0 });
+    }
+  };
+
+  const getShapeRadius = (angle, shapeMode, baseRadius, point, t) => {
+    const morphT = Math.sin(t * 0.5) * 0.5 + 0.5;
+
+    switch(shapeMode) {
+      case 0:
+        return baseRadius * (1 + Math.sin(t * 2) * 0.05);
+      case 1:
+        return baseRadius * (1 + 0.35 * Math.sin(angle * 2 + t * 0.5));
+      case 2:
+        const starPoints = 5;
+        const starAngle = (angle * starPoints) % (Math.PI * 2);
+        return baseRadius * (1 + 0.45 * Math.abs(Math.cos(starAngle * 2.5 + t * 0.3)));
+      case 3:
+        return baseRadius * (1 + 0.4 * Math.sin(angle * 3 + point.shapeInfluence * Math.PI + t * 0.4));
+      case 4:
+        const petals = 6;
+        return baseRadius * (1 + 0.5 * Math.abs(Math.sin(angle * petals + t * 0.6)));
+      case 5:
+        const hexAngle = Math.floor(angle / (Math.PI / 3)) * (Math.PI / 3);
+        return baseRadius * (1 + 0.3 * Math.cos((angle - hexAngle) * 6 + t * 0.3));
+      case 6:
+        return baseRadius * (1 + 0.4 * Math.sin(angle * 4 + t * 2));
+      case 7:
+        return baseRadius * (1 + 0.35 * Math.sin(angle * 2 - t + point.shapeInfluence * Math.PI));
+      default:
+        return baseRadius;
+    }
+  };
+
+  const analyzeMusic = (dataArray, bufferLength) => {
+    const analysis = musicAnalysisRef.current;
+
+    const bassRange = Math.floor(bufferLength * 0.08);
+    const lowMidRange = Math.floor(bufferLength * 0.25);
+    const midRange = Math.floor(bufferLength * 0.5);
+    const highMidRange = Math.floor(bufferLength * 0.7);
+
+    const bass = dataArray.slice(0, bassRange).reduce((a, b) => a + b, 0) / bassRange;
+    const mid = dataArray.slice(lowMidRange, midRange).reduce((a, b) => a + b, 0) / (midRange - lowMidRange);
+    const high = dataArray.slice(highMidRange).reduce((a, b) => a + b, 0) / (bufferLength - highMidRange);
+    const avg = dataArray.reduce((a, b) => a + b, 0) / bufferLength;
+
+    let weightedSum = 0, totalWeight = 0;
+    dataArray.forEach((value, index) => {
+      weightedSum += value * index;
+      totalWeight += value;
+    });
+    analysis.pitch.prev = analysis.pitch.current;
+    analysis.pitch.current = totalWeight > 0 ? (weightedSum / totalWeight) / bufferLength : 0.5;
+    analysis.pitch.change = analysis.pitch.current - analysis.pitch.prev;
+    analysis.pitch.velocity = Math.abs(analysis.pitch.change);
+
+    const activeFreqs = dataArray.filter(v => v > 15).length;
+    analysis.harmony.richness = activeFreqs / bufferLength;
+
+    const bins = 8, binSize = Math.floor(bufferLength / bins);
+    const binEnergies = [];
+    for (let i = 0; i < bins; i++) {
+      const start = i * binSize;
+      const end = start + binSize;
+      binEnergies.push(dataArray.slice(start, end).reduce((a, b) => a + b, 0) / binSize);
+    }
+    const avgBinEnergy = binEnergies.reduce((a, b) => a + b) / bins;
+    const binVariance = binEnergies.reduce((acc, val) => acc + Math.abs(val - avgBinEnergy), 0) / bins;
+    analysis.harmony.complexity = Math.min(1, binVariance / 100);
+
+    analysis.dynamics.current = avg / 255;
+    analysis.timbre.brightness = analysis.pitch.current;
+
+    return {
+      bassIntensity: bass / 255,
+      midIntensity: mid / 255,
+      highIntensity: high / 255,
+      energy: avg / 255
+    };
+  };
+
+  useEffect(() => {
+    if (!analyser || !isPlaying) {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+      return;
+    }
+
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    let prevBass = 0;
+
+    const animate = () => {
+      animationRef.current = requestAnimationFrame(animate);
+
+      analyser.getByteFrequencyData(dataArray);
+      timeRef.current += 0.016;
+      shapeTransitionTimerRef.current += 0.016;
+
+      const analysis = musicAnalysisRef.current;
+      const colorState = colorStateRef.current;
+      const ball = energyBallRef.current;
+
+      const audioData = analyzeMusic(dataArray, bufferLength);
+
+      // Initialize palette
+      if (!colorState.initialized) {
+        try {
+          colorState.currentPalette = generateUniquePalette({
+            bassAvg: audioData.bassIntensity,
+            midAvg: audioData.midIntensity,
+            highAvg: audioData.highIntensity,
+            spectralCentroid: analysis.pitch.current,
+            harmonicRichness: analysis.harmony.richness
+          });
+          colorState.transitionProgress = 1;
+          colorState.lastChangeTime = timeRef.current;
+          colorState.initialized = true;
+        } catch (err) {
+          colorState.currentPalette = {
+            colors: [{ h: 200, s: 70, l: 60 }],
+            baseHue: 200,
+            type: 'fallback'
+          };
+          colorState.initialized = true;
+        }
+      }
+
+      // Check if time of day has changed
+      const currentTimeOfDay = getTimeOfDay();
+      const timeOfDayChanged = colorState.lastTimeOfDay &&
+                               colorState.lastTimeOfDay !== currentTimeOfDay;
+
+      // Smooth palette transitions every 10-15 seconds, on major music changes, or when time period changes
+      const timeSinceLastChange = timeRef.current - colorState.lastChangeTime;
+      const shouldChangePalette = (
+        timeOfDayChanged || // Immediate change when time period shifts
+        timeSinceLastChange > 10 + Math.random() * 5 ||
+        (analysis.harmony.complexity > 0.75 && timeSinceLastChange > 5)
+      );
+
+      if (timeOfDayChanged) {
+        colorState.lastTimeOfDay = currentTimeOfDay;
+      } else if (!colorState.lastTimeOfDay) {
+        colorState.lastTimeOfDay = currentTimeOfDay;
+      }
+
+      if (shouldChangePalette && colorState.transitionProgress >= 1) {
+        try {
+          colorState.nextPalette = generateUniquePalette({
+            bassAvg: audioData.bassIntensity,
+            midAvg: audioData.midIntensity,
+            highAvg: audioData.highIntensity,
+            spectralCentroid: analysis.pitch.current,
+            harmonicRichness: analysis.harmony.richness
+          });
+          colorState.transitionProgress = 0;
+          colorState.lastChangeTime = timeRef.current;
+        } catch (err) {
+          console.error('Palette generation error:', err);
+        }
+      }
+
+      // Smooth palette transition
+      if (colorState.transitionProgress < 1 && colorState.nextPalette) {
+        colorState.transitionProgress += 0.005; // Slow, smooth transition over ~3 seconds
+        if (colorState.transitionProgress >= 1) {
+          colorState.currentPalette = colorState.nextPalette;
+          colorState.nextPalette = null;
+        }
+      }
+
+      // Get active palette (interpolated if transitioning)
+      const activePalette = colorState.transitionProgress < 1 && colorState.nextPalette
+        ? interpolatePalettes(colorState.currentPalette, colorState.nextPalette, colorState.transitionProgress)
+        : colorState.currentPalette;
+
+      // Shape transitions
+      const shouldTransition = (
+        shapeTransitionTimerRef.current > 4 + Math.random() * 2 ||
+        analysis.harmony.complexity > 0.7 ||
+        audioData.energy > 0.8
+      );
+
+      if (shouldTransition && ball.shapeMorphProgress >= 1) {
+        const numShapes = 8;
+        let newShape;
+
+        if (audioData.bassIntensity > 0.7) {
+          newShape = Math.random() < 0.5 ? 0 : 3;
+        } else if (analysis.harmony.complexity > 0.6) {
+          newShape = Math.floor(Math.random() * 3) + 4;
+        } else if (audioData.highIntensity > 0.6) {
+          newShape = Math.random() < 0.5 ? 2 : 6;
+        } else {
+          newShape = Math.floor(Math.random() * numShapes);
+        }
+
+        if (newShape !== ball.targetShapeMode) {
+          ball.targetShapeMode = newShape;
+          ball.shapeMorphProgress = 0;
+          shapeTransitionTimerRef.current = 0;
+        }
+      }
+
+      if (ball.shapeMode !== ball.targetShapeMode) {
+        const morphSpeed = 0.008 + audioData.energy * 0.015 + analysis.harmony.complexity * 0.01;
+        ball.shapeMorphProgress += morphSpeed;
+
+        if (ball.shapeMorphProgress >= 1) {
+          ball.shapeMode = ball.targetShapeMode;
+          ball.shapeMorphProgress = 1;
+        }
+      }
+
+      ball.energy = Math.max(0, ball.energy - 0.015);
+
+      // Size dynamics with max radius constraint
+      const energyMultiplier = 1 + audioData.energy * 0.6 + ball.energy * 0.3;
+      const pulseMultiplier = 1 + Math.sin(ball.pulsePhase) * ball.energy * 0.12;
+      const dynamicsMultiplier = 0.9 + analysis.dynamics.current * 0.3;
+      const targetRadius = ball.baseRadius * energyMultiplier * pulseMultiplier * dynamicsMultiplier;
+
+      // Clamp to max radius to keep on screen
+      ball.radius = Math.min(targetRadius, ball.maxRadius);
+      ball.pulsePhase += 0.05;
+
+      // Update points
+      ball.points.forEach((point, i) => {
+        const freqIndex = Math.floor((i / ball.points.length) * bufferLength);
+        const freqValue = dataArray[freqIndex] / 255;
+
+        const noiseSpeed = 0.08 + (1 - (analysis.rhythm.consistency || 0.5)) * 0.15;
+        const noiseValue = fractalNoise2D(
+          Math.cos(point.angle) * 0.5 + timeRef.current * noiseSpeed,
+          Math.sin(point.angle) * 0.5 + timeRef.current * noiseSpeed,
+          4,
+          0.5
+        );
+
+        const currentShapeRadius = getShapeRadius(point.angle, ball.shapeMode, ball.radius, point, timeRef.current);
+        const targetShapeRadius = getShapeRadius(point.angle, ball.targetShapeMode, ball.radius, point, timeRef.current);
+
+        const easeInOutCubic = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        const easedProgress = easeInOutCubic(ball.shapeMorphProgress);
+        const morphedShapeRadius = currentShapeRadius + (targetShapeRadius - currentShapeRadius) * easedProgress;
+
+        const freqInfluence = freqValue * 0.25;
+        const noiseInfluence = noiseValue * 0.15;
+        const harmonyInfluence = analysis.harmony.complexity * 0.2;
+        const pitchInfluence = analysis.pitch.velocity * 0.18;
+
+        point.localEnergy += (freqValue - point.localEnergy) * 0.1;
+        const localInfluence = point.localEnergy * 0.15;
+
+        const totalInfluence = freqInfluence + noiseInfluence + harmonyInfluence + pitchInfluence + localInfluence;
+        const clampedInfluence = Math.max(-ball.sentientBoundary, Math.min(ball.sentientBoundary, totalInfluence));
+
+        point.targetRadius = morphedShapeRadius * (1 + clampedInfluence);
+
+        const responseSpeed = 0.045 + (analysis.timbre.roughness || 0) * 0.055;
+        const diff = point.targetRadius - point.radius;
+        ball.velocities[i].radial += diff * responseSpeed;
+        ball.velocities[i].radial *= 0.87;
+
+        point.radius += ball.velocities[i].radial;
+
+        const rotationSpeed = (analysis.melody.direction || 0) * 0.0004 * (analysis.texture.density || 0.5);
+        point.angle += rotationSpeed;
+      });
+
+      // Render
+      const bgColor = bassToDeepColor(audioData.bassIntensity * 0.5, activePalette);
+      ctx.fillStyle = hslToString({ h: bgColor.h, s: bgColor.s, l: Math.max(5, bgColor.l - 35) }, 1);
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Outer glow
+      const outerGlow = ctx.createRadialGradient(ball.x, ball.y, 0, ball.x, ball.y, ball.radius * 2.5);
+      const glowColor = trebleToLightColor(audioData.highIntensity, activePalette);
+      const radiantGlow = toRadiantGlow(glowColor, audioData.energy);
+      outerGlow.addColorStop(0, hslToString(radiantGlow, 0.25 * audioData.energy));
+      outerGlow.addColorStop(0.4, hslToString(glowColor, 0.12 * audioData.energy));
+      outerGlow.addColorStop(1, 'transparent');
+      ctx.fillStyle = outerGlow;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw ball
+      ctx.save();
+      ctx.translate(ball.x, ball.y);
+
+      ctx.beginPath();
+      ball.points.forEach((point, i) => {
+        const x = Math.cos(point.angle) * point.radius;
+        const y = Math.sin(point.angle) * point.radius;
+
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          const prevPoint = ball.points[i - 1];
+          const prevX = Math.cos(prevPoint.angle) * prevPoint.radius;
+          const prevY = Math.sin(prevPoint.angle) * prevPoint.radius;
+          const cpX = (prevX + x) / 2;
+          const cpY = (prevY + y) / 2;
+          ctx.quadraticCurveTo(prevX, prevY, cpX, cpY);
+        }
+      });
+      ctx.closePath();
+
+      const mainGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, ball.radius);
+      const corePosition = 0.2 + (analysis.timbre.brightness || 0.5) * 0.3;
+      const midPosition = 0.5 + (analysis.harmony.complexity || 0) * 0.2;
+      const edgePosition = 0.8 + audioData.energy * 0.15;
+
+      const coreColor = toLuminous(getColorFromPalette(activePalette, corePosition, audioData.energy), audioData.energy);
+      const midColor = getColorFromPalette(activePalette, midPosition, audioData.energy * 0.8);
+      const edgeColor = getColorFromPalette(activePalette, edgePosition, audioData.energy * 0.6);
+
+      mainGradient.addColorStop(0, hslToString(coreColor, 0.95));
+      mainGradient.addColorStop(0.4, hslToString(midColor, 0.85));
+      mainGradient.addColorStop(0.7, hslToString(edgeColor, 0.7));
+      mainGradient.addColorStop(1, hslToString(edgeColor, 0.3));
+
+      ctx.fillStyle = mainGradient;
+      ctx.fill();
+
+      ctx.strokeStyle = hslToString(coreColor, 0.6);
+      ctx.lineWidth = 2 + audioData.energy * 4;
+      ctx.stroke();
+
+      ctx.restore();
+
+      // Inner core
+      const coreSize = ball.radius * 0.3 * (1 + Math.sin(timeRef.current * 3) * 0.2 * audioData.energy);
+      const coreGradient = ctx.createRadialGradient(ball.x, ball.y, 0, ball.x, ball.y, coreSize);
+      const innerCoreColor = toLuminous(getColorFromPalette(activePalette, 0.1, audioData.energy), 1);
+
+      coreGradient.addColorStop(0, hslToString(innerCoreColor, 0.95));
+      coreGradient.addColorStop(0.6, hslToString(coreColor, 0.65));
+      coreGradient.addColorStop(1, 'transparent');
+
+      ctx.globalCompositeOperation = 'screen';
+      ctx.fillStyle = coreGradient;
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, coreSize, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+
+      // Rings
+      if (audioData.energy > 0.3) {
+        const numRings = Math.floor(2 + (analysis.texture.layering || 0) * 3);
+        for (let i = 0; i < numRings; i++) {
+          const ringRadius = ball.radius * (1.2 + i * 0.3);
+          const ringAlpha = (1 - i * 0.3) * audioData.energy * 0.35;
+          const ringPosition = 0.3 + i * 0.2;
+          const ringColor = getColorFromPalette(activePalette, ringPosition, audioData.energy);
+
+          ctx.strokeStyle = hslToString(ringColor, ringAlpha);
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(ball.x, ball.y, ringRadius + Math.sin(timeRef.current * 2 + i) * 10, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+
+      // Particles
+      if (audioData.energy > 0.5) {
+        const numParticles = Math.floor(audioData.energy * 25);
+        for (let i = 0; i < numParticles; i++) {
+          const angle = (i / numParticles) * Math.PI * 2;
+          const distance = ball.radius * 1.5 + Math.sin(timeRef.current * 3 + i) * ball.radius * 0.5;
+          const x = ball.x + Math.cos(angle) * distance;
+          const y = ball.y + Math.sin(angle) * distance;
+
+          const particleSize = 2 + audioData.energy * 3;
+          const particlePosition = (i / numParticles);
+          const particleColor = toLuminous(getColorFromPalette(activePalette, particlePosition, audioData.energy), 0.8);
+
+          ctx.fillStyle = hslToString(particleColor, audioData.energy * 0.6);
+          ctx.beginPath();
+          ctx.arc(x, y, particleSize, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    };
+
+    animate();
+
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, [analyser, isPlaying]);
+
+  return <canvas ref={canvasRef} className="visualizer-canvas" />;
+};
+
+export default AudioVisualizerBall;
