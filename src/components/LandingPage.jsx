@@ -142,6 +142,7 @@ export default function LandingPage({ onLaunch }) {
     transition: 'opacity 1.2s cubic-bezier(0.4, 0, 0.2, 1), transform 1.2s cubic-bezier(0.4, 0, 0.2, 1)'
   };
 
+/*
   return (
     <div style={styles.page}>
       <canvas ref={canvasRef} style={styles.canvas} />
@@ -192,7 +193,46 @@ export default function LandingPage({ onLaunch }) {
     </div>
   );
 }
+*/
 
+return (
+    <div style={styles.page}>
+      <canvas ref={canvasRef} style={styles.canvas} />
+
+      <main style={transitionStyle}>
+        <section style={styles.hero}>
+          <p style={styles.label}>An internal experiment by [Studio Name]</p>
+          <h1 style={styles.title}>Spectral Sounds</h1>
+
+          <div style={styles.descriptionWrapper}>
+            <p style={styles.subtitle}>
+              Sound, rendered as atmosphere. Color, driven by structure.
+            </p>
+            <p style={styles.system}>A living audiovisual system.</p>
+          </div>
+
+          <div style={styles.ctaWrapper}>
+            <button
+              style={styles.ctaButton}
+              onClick={handleStartExperience}
+            >
+              → Enter the prototype
+            </button>
+            <span style={styles.note}>(early web version)</span>
+          </div>
+        </section>
+
+        <footer style={styles.footer}>
+          <span>[Studio Name] © 2025</span>
+        </footer>
+      </main>
+    </div>
+  );
+
+
+
+
+/*
 const styles = {
   page: {
     position: "relative",
@@ -281,5 +321,105 @@ const styles = {
     marginTop: "10vh",
     fontSize: "0.75rem",
     color: "rgba(255,255,255,0.25)",
+  },
+};
+*/
+
+const styles = {
+  page: {
+    position: "relative",
+    height: "100vh",
+    height: "100dvh", /* Essential for iPhone Safari */
+    background: "#05070c",
+    color: "rgba(255,255,255,0.75)",
+    fontFamily: "Inter, sans-serif",
+    overflow: "hidden", /* Disables scrolling */
+  },
+  canvas: {
+    position: "fixed",
+    inset: 0,
+    zIndex: 0,
+  },
+  content: {
+    position: "relative",
+    zIndex: 1,
+    height: "100%",
+    width: "100%",
+    maxWidth: "1200px",
+    margin: "0 auto",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center", /* Centers everything vertically */
+    alignItems: "center",
+    padding: "0 2rem",
+    boxSizing: "border-box",
+    textAlign: "center",
+    pointerEvents: "none",
+  },
+  hero: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    width: "100%",
+    pointerEvents: "auto",
+  },
+  title: {
+    /* clamp(min, preferred, max) - scales with screen height */
+    fontSize: "clamp(2.2rem, 10vh, 5.5rem)",
+    fontWeight: 300,
+    lineHeight: 1.1,
+    margin: "0 0 1.5vh 0",
+    color: "#fff",
+    letterSpacing: "-0.02em",
+  },
+  label: {
+    fontSize: "0.65rem",
+    letterSpacing: "0.2em",
+    textTransform: "uppercase",
+    color: "rgba(255,255,255,0.45)",
+    margin: "0 0 1vh 0",
+  },
+  descriptionWrapper: {
+    maxWidth: "500px",
+    margin: "0 0 4vh 0",
+  },
+  subtitle: {
+    fontSize: "clamp(0.9rem, 2vh, 1.2rem)",
+    lineHeight: 1.5,
+    margin: "0 0 1vh 0",
+  },
+  system: {
+    fontSize: "0.8rem",
+    color: "rgba(255,255,255,0.4)",
+  },
+  ctaWrapper: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: "0.5rem",
+  },
+  ctaButton: {
+    background: "rgba(255,255,255,0.05)",
+    border: "1px solid rgba(255,255,255,0.2)",
+    borderRadius: "100px", /* Luxury pill shape */
+    color: "#fff",
+    padding: "1rem 2rem",
+    cursor: "pointer",
+    fontSize: "0.9rem",
+    fontFamily: "inherit",
+    pointerEvents: "auto",
+    transition: "all 0.3s ease",
+    backdropFilter: "blur(10px)",
+  },
+  note: {
+    fontSize: "0.6rem",
+    color: "rgba(255,255,255,0.3)",
+  },
+  footer: {
+    position: "absolute",
+    bottom: "3vh",
+    fontSize: "0.7rem",
+    letterSpacing: "0.1em",
+    color: "rgba(255,255,255,0.2)",
   },
 };
