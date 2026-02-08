@@ -346,7 +346,7 @@ const styles = {
     height: "100%",
     width: "100%",
     maxWidth: "1200px",
-    margin: "15 auto",
+    margin: "7",
     display: "flex",
     flexDirection: "column",
     justifyContent: "center", /* Centers everything vertically */
