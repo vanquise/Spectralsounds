@@ -194,41 +194,37 @@ export default function LandingPage({ onLaunch }) {
   );
 }
 */
+<main style={styles.content}>
+        <div style={transitionStyle}>
+          <section style={styles.hero}>
+            <p style={styles.label}>An internal experiment by [Studio Name]</p>
+            <h1 style={styles.title}>Spectral Sounds</h1>
 
-return (
-    <div style={styles.page}>
-      <canvas ref={canvasRef} style={styles.canvas} />
-
-      <main style={transitionStyle}>
-        <section style={styles.hero}>
-          <p style={styles.label}>An internal experiment by [Studio Name]</p>
-          <h1 style={styles.title}>Spectral Sounds</h1>
-
-          <div style={styles.descriptionWrapper}>
             <p style={styles.subtitle}>
               Sound, rendered as atmosphere. Color, driven by structure.
             </p>
-            <p style={styles.system}>A living audiovisual system.</p>
-          </div>
 
-          <div style={styles.ctaWrapper}>
+            <div style={styles.experimentBox}>
+              <p style={styles.sectionLabel}>The Experiment</p>
+              <p style={styles.smallText}>
+                The system listens. The form responds. <span style={{color: '#fff'}}>Nothing is fixed.</span>
+              </p>
+            </div>
+
             <button
               style={styles.ctaButton}
               onClick={handleStartExperience}
             >
-              → Enter the prototype
+              → Launch Prototype
             </button>
             <span style={styles.note}>(early web version)</span>
-          </div>
-        </section>
+          </section>
+        </div>
 
         <footer style={styles.footer}>
-          <span>[Studio Name] © 2025</span>
+          <span>[Studio Name] © 2026</span>
         </footer>
       </main>
-    </div>
-  );
-
 
 
 
