@@ -333,12 +333,12 @@ const styles = {
     overflow: "auto", /* No scrolling allowed */
   },
   canvas: {
-    position: "relative",
+    position: "fixed",
     inset: 0,
     zIndex: 0,
   },
   content: {
-    position: "fixed",
+    position: "relative",
     zIndex: 1,
     height: "100%",
     display: "flex",
