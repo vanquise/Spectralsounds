@@ -330,15 +330,15 @@ const styles = {
     background: "#05070c",
     color: "rgba(255,255,255,0.75)",
     fontFamily: "Inter, sans-serif",
-    overflow: "hidden", /* No scrolling allowed */
+    overflow: "auto", /* No scrolling allowed */
   },
   canvas: {
-    position: "fixed",
+    position: "relative",
     inset: 0,
     zIndex: 0,
   },
   content: {
-    position: "relative",
+    position: "fixed",
     zIndex: 1,
     height: "100%",
     display: "flex",
