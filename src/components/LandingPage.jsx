@@ -322,6 +322,7 @@ const styles = {
 */
 
 
+
 const styles = {
   page: {
     position: "relative",
@@ -330,7 +331,7 @@ const styles = {
     background: "#05070c",
     color: "rgba(255,255,255,0.75)",
     fontFamily: "Inter, sans-serif",
-    overflow: "auto", /* No scrolling allowed */
+    overflow: "hidden",
   },
   canvas: {
     position: "fixed",
@@ -343,7 +344,7 @@ const styles = {
     height: "100%",
     display: "flex",
     flexDirection: "column",
-    justifyContent: "center", /* Centers everything vertically */
+    justifyContent: "center",
     alignItems: "center",
     textAlign: "center",
     padding: "0 10vw",
@@ -353,14 +354,15 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    gap: "2vh", /* Dynamic gap that scales with height */
+    /* TIGHTENED: Reduced gap so Experiment text sits closer to Title */
+    gap: "0.8vh",
     pointerEvents: "auto",
   },
   title: {
-    fontSize: "clamp(2rem, 8vh, 5rem)", /* Prevents title from pushing button off-screen */
+    fontSize: "clamp(2rem, 8vh, 5rem)",
     fontWeight: 300,
     lineHeight: 1,
-    margin: 0,
+    margin: "0 0 0.5vh 0", /* Minimal margin below title */
     color: "#fff",
     letterSpacing: "-0.02em",
   },
@@ -372,48 +374,52 @@ const styles = {
     margin: 0,
   },
   subtitle: {
-    fontSize: "clamp(0.9rem, 2vh, 1.1rem)",
-    maxWidth: "450px",
-    lineHeight: 1.5,
+    fontSize: "clamp(0.85rem, 1.8vh, 1.05rem)",
+    maxWidth: "400px",
+    lineHeight: 1.4,
     margin: 0,
   },
   experimentBox: {
-    margin: "1vh 0",
-    maxWidth: "400px",
+    /* TIGHTENED: Minimal vertical space for the experiment block */
+    margin: "0.2vh 0",
+    maxWidth: "380px",
   },
   sectionLabel: {
     fontSize: "0.6rem",
     letterSpacing: "0.2em",
     textTransform: "uppercase",
-    marginBottom: "0.5vh",
+    marginBottom: "0.2vh",
     display: "block",
   },
   smallText: {
-    fontSize: "0.85rem",
-    lineHeight: 1.4,
+    fontSize: "0.8rem",
+    lineHeight: 1.3,
     color: "rgba(255,255,255,0.5)",
   },
   ctaButton: {
     background: "rgba(255,255,255,0.06)",
-    border: "0.5px solid rgba(255,255,255,0.2)",
-    borderRadius: "8px",
+    border: "0.5px solid rgba(255,255,255,0.18)",
+    borderRadius: "6px",
     color: "#fff",
-    padding: "1.2vh 2.5vw",
-    minPadding: "10px 20px",
+    /* TIGHTENED: Compact button padding */
+    padding: "8px 20px",
     cursor: "pointer",
-    fontSize: "0.9rem",
+    fontSize: "0.85rem",
     fontFamily: "inherit",
+    marginTop: "0.8vh",
     transition: "all 0.3s ease",
     backdropFilter: "blur(10px)",
   },
   note: {
-    fontSize: "0.6rem",
-    color: "rgba(255,255,255,0.3)",
+    fontSize: "0.55rem",
+    color: "rgba(255,255,255,0.25)",
+    marginTop: "0.2vh",
   },
   footer: {
     position: "absolute",
-    bottom: "3vh",
-    fontSize: "0.7rem",
-    color: "rgba(255,255,255,0.2)",
+    /* TIGHTENED: Moves footer up slightly so it's clearly part of the "glance" */
+    bottom: "5vh",
+    fontSize: "0.65rem",
+    color: "rgba(255,255,255,0.15)",
   },
 };
