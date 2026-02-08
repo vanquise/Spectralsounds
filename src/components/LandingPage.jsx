@@ -325,15 +325,16 @@ const styles = {
 };
 */
 
+
 const styles = {
   page: {
     position: "relative",
     height: "100vh",
-    height: "100dvh", /* Essential for iPhone Safari */
+    height: "100dvh",
     background: "#05070c",
     color: "rgba(255,255,255,0.75)",
     fontFamily: "Inter, sans-serif",
-    overflow: "hidden", /* Disables scrolling */
+    overflow: "hidden", /* No scrolling allowed */
   },
   canvas: {
     position: "fixed",
@@ -344,31 +345,26 @@ const styles = {
     position: "relative",
     zIndex: 1,
     height: "100%",
-    width: "100%",
-    maxWidth: "1200px",
-    margin: "7",
     display: "flex",
     flexDirection: "column",
     justifyContent: "center", /* Centers everything vertically */
     alignItems: "center",
-    padding: "0 2rem",
-    boxSizing: "border-box",
     textAlign: "center",
-    pointerEvents: "none",
+    padding: "0 10vw",
+    boxSizing: "border-box",
   },
   hero: {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    width: "100%",
+    gap: "2vh", /* Dynamic gap that scales with height */
     pointerEvents: "auto",
   },
   title: {
-    /* clamp(min, preferred, max) - scales with screen height */
-    fontSize: "clamp(2.2rem, 10vh, 5.5rem)",
+    fontSize: "clamp(2rem, 8vh, 5rem)", /* Prevents title from pushing button off-screen */
     fontWeight: 300,
-    lineHeight: 1.1,
-    margin: "0 0 1.5vh 0",
+    lineHeight: 1,
+    margin: 0,
     color: "#fff",
     letterSpacing: "-0.02em",
   },
@@ -377,37 +373,40 @@ const styles = {
     letterSpacing: "0.2em",
     textTransform: "uppercase",
     color: "rgba(255,255,255,0.45)",
-    margin: "0 0 1vh 0",
-  },
-  descriptionWrapper: {
-    maxWidth: "500px",
-    margin: "0 0 4vh 0",
+    margin: 0,
   },
   subtitle: {
-    fontSize: "clamp(0.9rem, 2vh, 1.2rem)",
+    fontSize: "clamp(0.9rem, 2vh, 1.1rem)",
+    maxWidth: "450px",
     lineHeight: 1.5,
-    margin: "0 0 1vh 0",
+    margin: 0,
   },
-  system: {
-    fontSize: "0.8rem",
-    color: "rgba(255,255,255,0.4)",
+  experimentBox: {
+    margin: "1vh 0",
+    maxWidth: "400px",
   },
-  ctaWrapper: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: "0.5rem",
+  sectionLabel: {
+    fontSize: "0.6rem",
+    letterSpacing: "0.2em",
+    textTransform: "uppercase",
+    marginBottom: "0.5vh",
+    display: "block",
+  },
+  smallText: {
+    fontSize: "0.85rem",
+    lineHeight: 1.4,
+    color: "rgba(255,255,255,0.5)",
   },
   ctaButton: {
-    background: "rgba(255,255,255,0.05)",
-    border: "1px solid rgba(255,255,255,0.2)",
-    borderRadius: "100px", /* Luxury pill shape */
+    background: "rgba(255,255,255,0.06)",
+    border: "0.5px solid rgba(255,255,255,0.2)",
+    borderRadius: "8px",
     color: "#fff",
-    padding: "1rem 2rem",
+    padding: "1.2vh 2.5vw",
+    minPadding: "10px 20px",
     cursor: "pointer",
     fontSize: "0.9rem",
     fontFamily: "inherit",
-    pointerEvents: "auto",
     transition: "all 0.3s ease",
     backdropFilter: "blur(10px)",
   },
@@ -419,7 +418,6 @@ const styles = {
     position: "absolute",
     bottom: "3vh",
     fontSize: "0.7rem",
-    letterSpacing: "0.1em",
     color: "rgba(255,255,255,0.2)",
   },
 };
