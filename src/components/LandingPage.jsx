@@ -38,24 +38,20 @@ export default LandingPage;
 
 
 
-
-
-
-
 import React, { useState, useEffect, useRef } from "react";
 
 export default function LandingPage({ onLaunch }) {
   const canvasRef = useRef(null);
 
-  // 1. ADDED: State to manage the "Exit" animation
+  // 1. State to manage the "Exit" animation
   const [isExiting, setIsExiting] = useState(false);
 
   // 2. LUXURY TRANSITION FUNCTION
   const handleStartExperience = () => {
-    setIsExiting(true); // Triggers the fade out in the styles below
+    setIsExiting(true);
     setTimeout(() => {
       if (onLaunch) onLaunch();
-    }, 1200); // 1.2 seconds of "cinema" fade before switching
+    }, 1200);
   };
 
   useEffect(() => {
@@ -84,18 +80,9 @@ export default function LandingPage({ onLaunch }) {
 
     function drawAuroraIdle() {
       ctx.clearRect(0, 0, width, height);
-
-      // --- ADJUST AURORA LOOK HERE ---
-
-      // OPACITY: Set this to 0.1 or 0.2 for that "10-20%" ghostly look
       ctx.globalAlpha = 0.60;
-
-      // BLUR: Higher px = more "bluffy"/unfocused/luxury feel
       ctx.filter = "blur(10px)";
 
-      // -------------------------------
-
-      // Background
       const bg = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(width, height));
       bg.addColorStop(0, "#0b1020");
       bg.addColorStop(1, "#05070c");
@@ -119,10 +106,8 @@ export default function LandingPage({ onLaunch }) {
         ctx.fill();
       }
 
-      // Reset filters so they don't stack weirdly
       ctx.filter = "none";
       ctx.globalAlpha = 1.0;
-
       t += 16;
       animationFrameId = requestAnimationFrame(drawAuroraIdle);
     }
@@ -134,7 +119,7 @@ export default function LandingPage({ onLaunch }) {
     };
   }, []);
 
-  // 3. DYNAMIC STYLE: This handles the smooth fade-out of the text
+  // DYNAMIC STYLE: Handles the smooth fade-out
   const transitionStyle = {
     ...styles.content,
     opacity: isExiting ? 0 : 1,
@@ -142,185 +127,42 @@ export default function LandingPage({ onLaunch }) {
     transition: 'opacity 1.2s cubic-bezier(0.4, 0, 0.2, 1), transform 1.2s cubic-bezier(0.4, 0, 0.2, 1)'
   };
 
-/*
   return (
     <div style={styles.page}>
       <canvas ref={canvasRef} style={styles.canvas} />
 
       <main style={transitionStyle}>
         <section style={styles.hero}>
-          <h1 style={styles.title}>Spectral Sounds</h1>
           <p style={styles.label}>An internal experiment by [Studio Name]</p>
+          <h1 style={styles.title}>Spectral Sounds</h1>
 
           <p style={styles.subtitle}>
-            Sound, rendered as atmosphere.<br /><br />
-            Color, driven by structure.
+            Sound, rendered as atmosphere. Color, driven by structure.
           </p>
 
-          <p style={styles.system}>A living audiovisual system.</p>
+          <div style={styles.experimentBox}>
+            <p style={styles.sectionLabel}>The Experiment</p>
+            <p style={styles.smallText}>
+              The system listens. The form responds. <span style={{ color: '#fff' }}>Nothing is fixed.</span>
+            </p>
+          </div>
 
           <button
             style={styles.ctaButton}
             onClick={handleStartExperience}
           >
-            → Enter the prototype
+            → Launch Prototype
           </button>
-
           <span style={styles.note}>(early web version)</span>
         </section>
 
-        <section style={styles.section}>
-          <p style={styles.sectionLabel}>The Experiment</p>
-          <p style={styles.text}>
-            Spectral Sounds studies how music shapes space, mood, and attention.<br /><br />
-            The system listens. The form responds.<br /><br />
-            <span style={{color: '#fff'}}>Nothing is fixed.</span>
-          </p>
-        </section>
-
-        <section style={styles.section}>
-          <p style={styles.sectionLabel}>Experience</p>
-          <p style={styles.text}>
-            Load one of the reference tracks or bring your own sound.
-          </p>
-          <button style={styles.ctaButton} onClick={handleStartExperience}>→ Launch</button>
-        </section>
-
         <footer style={styles.footer}>
-          <span>[Studio Name]</span>
+          <span>[Studio Name] © 2025</span>
         </footer>
       </main>
     </div>
   );
 }
-*/
-<main style={styles.content}>
-        <div style={transitionStyle}>
-          <section style={styles.hero}>
-            <p style={styles.label}>An internal experiment by [Studio Name]</p>
-            <h1 style={styles.title}>Spectral Sounds</h1>
-
-            <p style={styles.subtitle}>
-              Sound, rendered as atmosphere. Color, driven by structure.
-            </p>
-
-            <div style={styles.experimentBox}>
-              <p style={styles.sectionLabel}>The Experiment</p>
-              <p style={styles.smallText}>
-                The system listens. The form responds. <span style={{color: '#fff'}}>Nothing is fixed.</span>
-              </p>
-            </div>
-
-            <button
-              style={styles.ctaButton}
-              onClick={handleStartExperience}
-            >
-              → Launch Prototype
-            </button>
-            <span style={styles.note}>(early web version)</span>
-          </section>
-        </div>
-    );
-  };
-
-export default LandingPage;
-
-
-
-/*
-const styles = {
-  page: {
-    position: "relative",
-    minHeight: "100vh",
-    background: "#05070c",
-    color: "rgba(255,255,255,0.75)",
-    fontFamily: "Inter, sans-serif",
-    overflowX: "hidden",
-  },
-  canvas: {
-    position: "fixed",
-    inset: 0,
-    zIndex: 0,
-  },
-  content: {
-    position: "relative",
-    zIndex: 1,
-    maxWidth: "1100px",
-    margin: "0 auto",
-    padding: "12vh 8vw 8vh",
-    pointerEvents: "none",
-  },
-  hero: {
-    marginBottom: "20vh",
-    pointerEvents: "auto",
-  },
-  section: {
-    marginBottom: "18vh",
-    pointerEvents: "auto",
-  },
-  title: {
-    fontSize: "clamp(3.5rem, 9vw, 7rem)",
-    fontWeight: 300,
-    lineHeight: 1,
-    marginBottom: "1rem",
-    color: "#fff",
-    letterSpacing: "-0.02em",
-  },
-  label: {
-    fontSize: "0.75rem",
-    letterSpacing: "0.15em",
-    textTransform: "uppercase",
-    color: "rgba(255,255,255,0.45)",
-    marginBottom: "2rem",
-  },
-  subtitle: {
-    fontSize: "1.25rem",
-    lineHeight: 1.5,
-    marginBottom: "2rem",
-  },
-  system: {
-    fontSize: "0.9rem",
-    color: "rgba(255,255,255,0.5)",
-    marginBottom: "3rem",
-  },
-  ctaButton: {
-    background: "none",
-    border: "none",
-    color: "#fff",
-    borderBottom: "1px solid rgba(255,255,255,0.3)",
-    paddingBottom: "4px",
-    cursor: "pointer",
-    fontSize: "1rem",
-    fontFamily: "inherit",
-    pointerEvents: "auto",
-    transition: "opacity 0.3s ease",
-  },
-  note: {
-    display: "block",
-    marginTop: "0.8rem",
-    fontSize: "0.7rem",
-    color: "rgba(255,255,255,0.35)",
-  },
-  sectionLabel: {
-    fontSize: "0.7rem",
-    letterSpacing: "0.2em",
-    textTransform: "uppercase",
-    marginBottom: "2.5rem",
-  },
-  text: {
-    fontSize: "1.2rem",
-    lineHeight: 1.8,
-    maxWidth: "600px",
-  },
-  footer: {
-    marginTop: "10vh",
-    fontSize: "0.75rem",
-    color: "rgba(255,255,255,0.25)",
-  },
-};
-*/
-
-
 
 const styles = {
   page: {
@@ -353,7 +195,6 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    /* TIGHTENED: Reduced gap so Experiment text sits closer to Title */
     gap: "0.8vh",
     pointerEvents: "auto",
   },
@@ -361,7 +202,7 @@ const styles = {
     fontSize: "clamp(2rem, 8vh, 5rem)",
     fontWeight: 300,
     lineHeight: 1,
-    margin: "0 0 0.5vh 0", /* Minimal margin below title */
+    margin: "0 0 0.5vh 0",
     color: "#fff",
     letterSpacing: "-0.02em",
   },
@@ -376,18 +217,17 @@ const styles = {
     fontSize: "clamp(0.85rem, 1.8vh, 1.05rem)",
     maxWidth: "400px",
     lineHeight: 1.4,
-    margin: 0,
+    margin: "1rem 0",
   },
   experimentBox: {
-    /* TIGHTENED: Minimal vertical space for the experiment block */
-    margin: "0.2vh 0",
+    margin: "2vh 0",
     maxWidth: "380px",
   },
   sectionLabel: {
     fontSize: "0.6rem",
     letterSpacing: "0.2em",
     textTransform: "uppercase",
-    marginBottom: "0.2vh",
+    marginBottom: "0.5vh",
     display: "block",
   },
   smallText: {
@@ -400,23 +240,21 @@ const styles = {
     border: "0.5px solid rgba(255,255,255,0.18)",
     borderRadius: "6px",
     color: "#fff",
-    /* TIGHTENED: Compact button padding */
-    padding: "8px 20px",
+    padding: "12px 28px",
     cursor: "pointer",
     fontSize: "0.85rem",
     fontFamily: "inherit",
-    marginTop: "0.8vh",
+    marginTop: "2vh",
     transition: "all 0.3s ease",
     backdropFilter: "blur(10px)",
   },
   note: {
     fontSize: "0.55rem",
     color: "rgba(255,255,255,0.25)",
-    marginTop: "0.2vh",
+    marginTop: "1vh",
   },
   footer: {
     position: "absolute",
-    /* TIGHTENED: Moves footer up slightly so it's clearly part of the "glance" */
     bottom: "5vh",
     fontSize: "0.65rem",
     color: "rgba(255,255,255,0.15)",
