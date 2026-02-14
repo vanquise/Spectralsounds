@@ -220,11 +220,10 @@ export default function LandingPage({ onLaunch }) {
             <span style={styles.note}>(early web version)</span>
           </section>
         </div>
+    );
+  };
 
-        <footer style={styles.footer}>
-          <span>[Studio Name] © 2026</span>
-        </footer>
-      </main>
+export default LandingPage;
 
 
 
@@ -422,4 +421,4 @@ const styles = {
     fontSize: "0.65rem",
     color: "rgba(255,255,255,0.15)",
   },
-}
+};
