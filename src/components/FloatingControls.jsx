@@ -25,8 +25,10 @@ const FloatingControls = ({
   onRemoveTrack,
   onModeChange,
   fileInputRef,
-  formatTime
+  formatTime,
+  onReorder
 }) => {
+ const [draggedIndex, setDraggedIndex] = React.useState(null);
   return (
     <div className={`floating-controls ${!controlsVisible ? 'hidden' : ''}`}>
       <button className="toggle-controls" onClick={onToggleControls}>
@@ -140,6 +142,17 @@ const FloatingControls = ({
                 key={index}
                 className={`mini-playlist-item ${index === currentIndex ? 'active' : ''}`}
                 onClick={() => onPlayTrack(track, index)}
+                onDragStart={() => setDraggedIndex(index)}
+        onDragOver={(e) => e.preventDefault()} // Necessary to allow drop
+        onDrop={() => {
+          onReorder(draggedIndex, index);
+          setDraggedIndex(null);
+        }}
+        className={`mini-playlist-item ${index === currentIndex ? 'active' : ''} ${draggedIndex === index ? 'dragging' : ''}`}
+        onClick={() => onPlayTrack(track, index)}
+
+
+
               >
                 <span className="mini-track-name">{track.name}</span>
                 <button
@@ -172,6 +185,11 @@ const FloatingControls = ({
         style={{ display: 'none' }}
       />
     </div>
+
+
+
+
+
   );
 };
 

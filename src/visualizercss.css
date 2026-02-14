@@ -845,6 +845,23 @@ body {
   }
 }
 
+.mini-playlist-item {
+  cursor: grab;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.mini-playlist-item:active {
+  cursor: grabbing;
+}
+
+.mini-playlist-item.dragging {
+  opacity: 0.5;
+  background: rgba(255, 255, 255, 0.1);
+  transform: scale(0.98);
+}
+
+
+
 /* ===== ACCESSIBILITY ===== */
 * {
   -webkit-tap-highlight-color: transparent;
