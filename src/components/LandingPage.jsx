@@ -1,5 +1,5 @@
 
-/*
+
 import React from 'react';
 const LandingPage = ({ onEnter }) => {
   return (
@@ -30,7 +30,6 @@ const LandingPage = ({ onEnter }) => {
 };
 
 export default LandingPage;
-*/
 
 
 
@@ -38,6 +37,7 @@ export default LandingPage;
 
 
 
+/*
 import React, { useState, useEffect, useRef } from "react";
 
 export default function LandingPage({ onLaunch }) {
@@ -163,6 +163,7 @@ export default function LandingPage({ onLaunch }) {
     </div>
   );
 }
+*/
 
 const styles = {
   page: {
