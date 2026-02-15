@@ -662,23 +662,15 @@ const styles = {
 
 
 
-
-
-
-
-
-
-
-
 import React, { useState, useEffect, useRef } from "react";
 
 export default function LandingPage({ onLaunch }) {
   const canvasRef = useRef(null);
 
-  // 1. ADDED: State to manage the "Exit" animation
+  // State to manage the "Exit" animation
   const [isExiting, setIsExiting] = useState(false);
 
-  // 2. LUXURY TRANSITION FUNCTION
+  // LUXURY TRANSITION FUNCTION
   const handleStartExperience = () => {
     setIsExiting(true); // Triggers the fade out in the styles below
     setTimeout(() => {
@@ -713,13 +705,12 @@ export default function LandingPage({ onLaunch }) {
     function drawAuroraIdle() {
       ctx.clearRect(0, 0, width, height);
 
-      // --- ADJUST AURORA LOOK HERE ---
-      // OPACITY: Set this to 0.1 or 0.2 for that "10-20%" ghostly look
+      // --- ORIGINAL AESHTETIC: AURORA LOOK ---
+      // OPACITY: 10% ghostly look
       ctx.globalAlpha = 0.10;
 
-      // BLUR: Higher px = more "bluffy"/unfocused/luxury feel
+      // BLUR: High blur for luxury unfocused feel
       ctx.filter = "blur(50px)";
-      // -------------------------------
 
       // Background
       const bg = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(width, height));
@@ -745,7 +736,7 @@ export default function LandingPage({ onLaunch }) {
         ctx.fill();
       }
 
-      // Reset filters so they don't stack weirdly
+      // Reset filters
       ctx.filter = "none";
       ctx.globalAlpha = 1.0;
 
@@ -760,7 +751,7 @@ export default function LandingPage({ onLaunch }) {
     };
   }, []);
 
-  // 3. DYNAMIC STYLE: This handles the smooth fade-out of the text
+  // DYNAMIC STYLE: Handles the smooth fade-out of the text
   const transitionStyle = {
     ...styles.content,
     opacity: isExiting ? 0 : 1,
@@ -771,6 +762,7 @@ export default function LandingPage({ onLaunch }) {
   return (
     <div style={styles.page}>
       <canvas ref={canvasRef} style={styles.canvas} />
+
       <main style={transitionStyle}>
         <section style={styles.hero}>
           <p style={styles.label}>An internal experiment by [Studio Name]</p>
@@ -783,7 +775,7 @@ export default function LandingPage({ onLaunch }) {
           <div style={styles.experimentBox}>
             <p style={styles.sectionLabel}>The Experiment</p>
             <p style={styles.smallText}>
-              The system listens. The form responds. <span style={{ color: '#fff' }}>Nothing is fixed.</span>
+              The system listens. The form responds. <span style={{color: '#fff'}}>Nothing is fixed.</span>
             </p>
           </div>
 
@@ -807,12 +799,11 @@ export default function LandingPage({ onLaunch }) {
 const styles = {
   page: {
     position: "relative",
-    height: "100vh",
-    height: "100dvh", // Essential for mobile browser address bars
+    height: "100dvh",
     background: "#05070c",
     color: "rgba(255,255,255,0.75)",
     fontFamily: "Inter, sans-serif",
-    overflow: "hidden", // Prevents accidental scrolling
+    overflow: "hidden",
   },
   canvas: {
     position: "fixed",
@@ -825,7 +816,7 @@ const styles = {
     height: "100%",
     display: "flex",
     flexDirection: "column",
-    justifyContent: "center", // Vertically centers all text
+    justifyContent: "center",
     alignItems: "center",
     textAlign: "center",
     padding: "0 5vw",
@@ -835,12 +826,12 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    gap: "1.2vh", // Uses height-based spacing to prevent overlap
+    gap: "1.2vh",
     maxWidth: "600px",
     width: "100%"
   },
   title: {
-    fontSize: "clamp(2rem, 9vh, 4.5rem)", // Fluid: shrinks if height is small
+    fontSize: "clamp(2rem, 9vh, 4.5rem)",
     fontWeight: 300,
     lineHeight: 1.1,
     margin: 0,
@@ -855,7 +846,7 @@ const styles = {
     margin: 0,
   },
   subtitle: {
-    fontSize: "clamp(0.8rem, 2vh, 1.1rem)", // Prevents text from becoming huge or tiny
+    fontSize: "clamp(0.8rem, 2vh, 1.1rem)",
     maxWidth: "420px",
     lineHeight: 1.5,
     margin: "0.5vh 0",
@@ -866,6 +857,18 @@ const styles = {
     background: "rgba(255,255,255,0.03)",
     borderRadius: "8px",
     border: "1px solid rgba(255,255,255,0.05)"
+  },
+  sectionLabel: {
+    fontSize: "0.6rem",
+    letterSpacing: "0.2em",
+    textTransform: "uppercase",
+    marginBottom: "0.5vh",
+    display: "block",
+  },
+  smallText: {
+    fontSize: "0.8rem",
+    lineHeight: 1.3,
+    color: "rgba(255,255,255,0.5)",
   },
   ctaButton: {
     background: "#fff",
@@ -879,9 +882,14 @@ const styles = {
     marginTop: "2vh",
     transition: "transform 0.2s ease",
   },
+  note: {
+    fontSize: "0.55rem",
+    color: "rgba(255,255,255,0.25)",
+    marginTop: "1vh",
+  },
   footer: {
     position: "absolute",
-    bottom: "4vh", // Stays anchored to the bottom
+    bottom: "4vh",
     fontSize: "0.6rem",
     letterSpacing: "0.1em",
     color: "rgba(255,255,255,0.2)",
