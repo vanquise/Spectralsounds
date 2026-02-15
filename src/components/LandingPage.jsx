@@ -384,7 +384,8 @@ export default function LandingPage({ onLaunch }) {
     transition: 'opacity 1.2s cubic-bezier(0.4, 0, 0.2, 1), transform 1.2s cubic-bezier(0.4, 0, 0.2, 1)'
   };
 
-/*
+
+
   return (
     <div style={styles.page}>
       <canvas ref={canvasRef} style={styles.canvas} />
@@ -435,7 +436,8 @@ export default function LandingPage({ onLaunch }) {
     </div>
   );
 }
-*/
+
+/*
 <main style={styles.content}>
         <div style={transitionStyle}>
           <section style={styles.hero}>
@@ -466,10 +468,10 @@ export default function LandingPage({ onLaunch }) {
   };
 
 export default LandingPage;
+*/
 
 
-
-
+/*
 const styles = {
   page: {
     position: "relative",
@@ -559,3 +561,89 @@ const styles = {
     fontSize: "0.75rem",
     color: "rgba(255,255,255,0.25)",
   },
+};
+*/
+
+const styles = {
+  page: {
+    position: "relative",
+    height: "100vh",
+    height: "100dvh", // Essential for mobile browser address bars
+    background: "#05070c",
+    color: "rgba(255,255,255,0.75)",
+    fontFamily: "Inter, sans-serif",
+    overflow: "hidden", // Prevents accidental scrolling
+  },
+  canvas: {
+    position: "fixed",
+    inset: 0,
+    zIndex: 0,
+  },
+  content: {
+    position: "relative",
+    zIndex: 1,
+    height: "100%",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center", // Vertically centers all text
+    alignItems: "center",
+    textAlign: "center",
+    padding: "0 5vw",
+    boxSizing: "border-box",
+  },
+  hero: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: "1.2vh", // Uses height-based spacing to prevent overlap
+    maxWidth: "600px",
+    width: "100%"
+  },
+  title: {
+    fontSize: "clamp(2rem, 9vh, 4.5rem)", // Fluid: shrinks if height is small
+    fontWeight: 300,
+    lineHeight: 1.1,
+    margin: 0,
+    color: "#fff",
+    letterSpacing: "-0.02em",
+  },
+  label: {
+    fontSize: "0.65rem",
+    letterSpacing: "0.2em",
+    textTransform: "uppercase",
+    color: "rgba(255,255,255,0.45)",
+    margin: 0,
+  },
+  subtitle: {
+    fontSize: "clamp(0.8rem, 2vh, 1.1rem)", // Prevents text from becoming huge or tiny
+    maxWidth: "420px",
+    lineHeight: 1.5,
+    margin: "0.5vh 0",
+  },
+  experimentBox: {
+    margin: "1vh 0",
+    padding: "1vh 2vw",
+    background: "rgba(255,255,255,0.03)",
+    borderRadius: "8px",
+    border: "1px solid rgba(255,255,255,0.05)"
+  },
+  ctaButton: {
+    background: "#fff",
+    border: "none",
+    borderRadius: "100px",
+    color: "#000",
+    padding: "14px 32px",
+    cursor: "pointer",
+    fontSize: "0.9rem",
+    fontWeight: 500,
+    marginTop: "2vh",
+    transition: "transform 0.2s ease",
+  },
+  footer: {
+    position: "absolute",
+    bottom: "4vh", // Stays anchored to the bottom
+    fontSize: "0.6rem",
+    letterSpacing: "0.1em",
+    color: "rgba(255,255,255,0.2)",
+  },
+};
