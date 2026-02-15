@@ -385,7 +385,7 @@ export default function LandingPage({ onLaunch }) {
   };
 
 
-
+/*
   return (
     <div style={styles.page}>
       <canvas ref={canvasRef} style={styles.canvas} />
@@ -436,8 +436,8 @@ export default function LandingPage({ onLaunch }) {
     </div>
   );
 }
+*/
 
-/*
 <main style={styles.content}>
         <div style={transitionStyle}>
           <section style={styles.hero}>
@@ -468,7 +468,7 @@ export default function LandingPage({ onLaunch }) {
   };
 
 export default LandingPage;
-*/
+
 
 
 /*
