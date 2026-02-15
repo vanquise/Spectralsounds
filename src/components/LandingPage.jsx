@@ -464,11 +464,11 @@ export default function LandingPage({ onLaunch }) {
             <span style={styles.note}>(early web version)</span>
           </section>
         </div>
+      </main>
     );
   };
 
 export default LandingPage;
-
 
 
 /*
