@@ -1,0 +1,137 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   DUAL AUDIO SYSTEM — CSS additions
+   Add these rules to the bottom of your existing visualizercss.css
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* ── Source toggle (Mic | Music) ─────────────────────────────────────────── */
+
+.source-toggle {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 10px;
+  border: 0.5px solid rgba(255, 255, 255, 0.08);
+}
+
+.source-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.source-btn:hover {
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.source-btn.active {
+  color: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.14);
+}
+
+/* Mic-on state: subtle breathing amber tint */
+.source-btn.mic-on {
+  color: #f5c97a;
+  background: rgba(245, 180, 80, 0.12);
+  box-shadow: 0 0 0 0.5px rgba(245, 180, 80, 0.25);
+}
+
+.source-btn.mic-on:hover {
+  background: rgba(245, 180, 80, 0.18);
+  color: #f5d08a;
+}
+
+/* Error state */
+.source-btn.errored {
+  color: rgba(255, 100, 100, 0.8);
+}
+
+.source-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ── Mic status bar ──────────────────────────────────────────────────────── */
+
+.mic-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(245, 180, 80, 0.07);
+  border-radius: 8px;
+  border: 0.5px solid rgba(245, 180, 80, 0.18);
+  margin-top: -2px;
+}
+
+.mic-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(245, 180, 80, 0.5);
+  flex-shrink: 0;
+  transition: background 0.4s ease;
+}
+
+/* Pulsing dot when actually receiving signal */
+.mic-dot.pulse {
+  background: #f5c97a;
+  animation: micPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes micPulse {
+  0%, 100% { opacity: 1;   transform: scale(1);    }
+  50%       { opacity: 0.5; transform: scale(0.75); }
+}
+
+.mic-status-text {
+  font-size: 11px;
+  font-weight: 400;
+  color: rgba(245, 200, 120, 0.85);
+  letter-spacing: 0.02em;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Responsive tweaks ───────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .source-btn {
+    font-size: 10px;
+    padding: 7px 8px;
+    gap: 4px;
+  }
+
+  .mic-status-text {
+    font-size: 10px;
+  }
+}
+
+/* ── iOS / Android safe area bottom padding (notch phones) ───────────────── */
+
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .floating-controls {
+    padding-bottom: calc(14px + env(safe-area-inset-bottom));
+    bottom: calc(24px + env(safe-area-inset-bottom));
+  }
+}
